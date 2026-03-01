@@ -34,12 +34,13 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
 
     # `#define MACRO_NAME value`
     # We enforce a space after the name to avoid capturing `MACRO_NAME(x)`
-    # We also enforce that the value is not empty (i.e., we need a value to evaluate)
-    define_pattern = re.compile(r'^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$', re.MULTILINE)
+    # We allow the value to be empty (e.g., define guards like `#define MACRO_NAME`)
+    define_pattern = re.compile(r'^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(?:[ \t]+(.*))?$', re.MULTILINE)
     
     probes = []
     for match in define_pattern.finditer(macro_output):
         macro_name = match.group(1)
+        macro_value = match.group(2)
         
         # Skip internal compiler macros starting with __ to speed things up
         if macro_name.startswith("__") and macro_name.endswith("__"):
@@ -49,7 +50,10 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
         if macro_name in known_macros:
             continue
             
-        probe_code = f"""
+        if not macro_value or not macro_value.strip():
+            probe_code = f"long long PROBE_{macro_name} = 1LL;\n"
+        else:
+            probe_code = f"""
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wint-conversion"
 #pragma clang diagnostic ignored "-Wpointer-to-int-cast"
