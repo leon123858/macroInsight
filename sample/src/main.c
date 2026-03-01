@@ -1,6 +1,6 @@
-#include "math_macros.h"
-#include "logic_macros.h"
-#include "invalid_macros.h"
+#include "../include/math_macros.h"
+#include "../include/logic_macros.h"
+#include "../include/invalid_macros.h"
 
 int GLOBAL_VAR = 42;
 int my_function(void) { return 1; }
