@@ -36,6 +36,7 @@ def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang", sy
                 if extracted_val is not None:
                     extracted_macros[macro_name] = extracted_val
                 else:
+                    extracted_macros[macro_name] = -9999
                     print(f"DEBUG: Failed to extract {macro_name} from VarDecl")
                     
         if "inner" in node:

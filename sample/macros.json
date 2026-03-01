@@ -14,9 +14,12 @@
     "COMPLEX_MACROS_H": 1,
     "INVALID_MACROS_H": 1,
     "INV_ARRAY": -9999,
+    "INV_FLOAT": -9999,
     "INV_FUNC": -9999,
     "INV_GLOBAL": -9999,
     "INV_PTR": -9999,
+    "INV_STRING": -9999,
+    "INV_TYPE": -9999,
     "INV_VAR_ADD": -9999,
     "LOGIC_AND": 1,
     "LOGIC_EQ": 1,
@@ -112,5 +115,7 @@
     "__SEG_GS": 1,
     "__amd64": 1,
     "__k8": 1,
+    "__seg_fs": -9999,
+    "__seg_gs": -9999,
     "__x86_64": 1
 }
