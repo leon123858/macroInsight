@@ -21,6 +21,7 @@
     "INV_STRING": -9999,
     "INV_TYPE": -9999,
     "INV_VAR_ADD": -9999,
+    "INV_WHILE": -9999,
     "LOGIC_AND": 1,
     "LOGIC_EQ": 1,
     "LOGIC_GE": 1,

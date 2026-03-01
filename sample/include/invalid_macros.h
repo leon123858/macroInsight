@@ -13,6 +13,14 @@ int my_function(void);
 #define INV_FLOAT 3.14159f
 #define INV_VAR_ADD (GLOBAL_VAR + 10)
 
+// while
+#define INV_WHILE do { \
+    int i = 0; \
+    while (i < 10) { \
+        i++; \
+    } \
+} while(0);
+
 // Macros evaluating to a type name
 #define INV_TYPE int
 
