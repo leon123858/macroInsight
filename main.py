@@ -117,6 +117,7 @@ def main():
     parser.add_argument("--output", "-o", help="Output JSON file", default=".\\macros_output.json")
     parser.add_argument("--clang", "-c", help="Clang executable to use", default="clang")
     parser.add_argument("--compile-fallback", action="store_true", help="Allow fallback to recursive C file search if compile_commands.json is missing")
+    parser.add_argument("--32", dest="arch32", action="store_true", help="Use 32-bit system architecture (sets pointer size to 4 bytes)")
     
     args = parser.parse_args()
     
@@ -125,6 +126,7 @@ def main():
     output_file = os.path.abspath(args.output)
     clang_exec = args.clang
     compile_fallback = args.compile_fallback
+    system_arch = 32 if args.arch32 else 64
     
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
     
@@ -194,7 +196,7 @@ def main():
                     all_macros[macro_def] = 1 # -DNAME implicitly defines NAME as 1
             i += 1
             
-        macros = process_file(file_path, extract_flags, all_macros, clang_exec)
+        macros = process_file(file_path, extract_flags, all_macros, clang_exec, system_arch)
         if macros:
             all_macros.update(macros)
         count += 1

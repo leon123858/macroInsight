@@ -52,7 +52,7 @@ Write-Host "Found: $cmakeVersion" -ForegroundColor Green
 
 Write-Host "`nEnvironment checks passed. Running MacroInsight...`n" -ForegroundColor Cyan
 
-$pyArgs = @("main.py", "--repo-dir", $RepoDir, "--output", $Output, "--clang", $Clang)
+$pyArgs = @("main.py", "--repo-dir", $RepoDir, "--output", $Output, "--clang", $Clang, "--32")
 if ($CompileFallback) {
     $pyArgs += "--compile-fallback"
 }

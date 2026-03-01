@@ -2,7 +2,7 @@ import subprocess
 import json
 import sys
 
-def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang"):
+def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang", system_arch=64):
     """
     Runs Clang with -fsyntax-only and -ast-dump=json on the modified source file.
     Extracts the values of variables starting with PROBE_.
@@ -32,7 +32,7 @@ def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang"):
             if name.startswith("PROBE_"):
                 macro_name = name[len("PROBE_"):]
                 
-                extracted_val = extract_value_from_vardecl(node)
+                extracted_val = extract_value_from_vardecl(node, system_arch)
                 if extracted_val is not None:
                     extracted_macros[macro_name] = extracted_val
                 else:
@@ -46,7 +46,7 @@ def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang"):
     return extracted_macros
 
 
-def extract_value_from_vardecl(node):
+def extract_value_from_vardecl(node, system_arch=64):
     """
     Extract the integer value from a VarDecl initialization.
     Handles ChooseExpr correctly by evaluating the condition.
@@ -60,20 +60,20 @@ def extract_value_from_vardecl(node):
             true_branch = inner[1]
             false_branch = inner[2]
             
-            cond_val = extract_literal_value(cond_node)
+            cond_val = extract_literal_value(cond_node, system_arch)
             if cond_val is not None and cond_val != 0:
-                return extract_literal_value(true_branch)
+                return extract_literal_value(true_branch, system_arch)
             else:
-                return extract_literal_value(false_branch)
+                return extract_literal_value(false_branch, system_arch)
     
     # Fallback to evaluating the initialization expression directly if ChooseExpr isn't present
     if "inner" in node:
         for child in node["inner"]:
-            val = extract_literal_value(child)
+            val = extract_literal_value(child, system_arch)
             if val is not None:
                 return val
                 
-    return extract_literal_value(node)
+    return extract_literal_value(node, system_arch)
 
 
 def find_node_of_kind(node, target_kind):
@@ -89,7 +89,7 @@ def find_node_of_kind(node, target_kind):
     return None
 
 
-def extract_literal_value(node):
+def extract_literal_value(node, system_arch=64):
     if not isinstance(node, dict):
         return None
         
@@ -125,6 +125,8 @@ def extract_literal_value(node):
                 }
                 if base_type in sizes:
                     return sizes[base_type] * count
+                if "*" in base_type:
+                    return (4 if system_arch == 32 else 8) * count
             
             # Simple types
             sizes = {
@@ -137,14 +139,14 @@ def extract_literal_value(node):
             if arg_type in sizes:
                 return sizes[arg_type]
             if "*" in arg_type:
-                return 8 # 64-bit pointer
+                return 4 if system_arch == 32 else 8
             
         return None
     elif kind == "UnaryOperator":
         opcode = node.get("opcode")
         inner = node.get("inner", [])
         if inner:
-            val = extract_literal_value(inner[0])
+            val = extract_literal_value(inner[0], system_arch)
             if val is not None:
                 if opcode == "-": return -val
                 if opcode == "~": return ~val
@@ -155,8 +157,8 @@ def extract_literal_value(node):
         opcode = node.get("opcode")
         inner = node.get("inner", [])
         if len(inner) >= 2:
-            left = extract_literal_value(inner[0])
-            right = extract_literal_value(inner[1])
+            left = extract_literal_value(inner[0], system_arch)
+            right = extract_literal_value(inner[1], system_arch)
             if left is not None and right is not None:
                 if opcode == "+": return left + right
                 if opcode == "-": return left - right
@@ -179,25 +181,29 @@ def extract_literal_value(node):
     elif kind == "ConditionalOperator":
         inner = node.get("inner", [])
         if len(inner) >= 3:
-            cond = extract_literal_value(inner[0])
+            cond = extract_literal_value(inner[0], system_arch)
             if cond is not None:
                 if cond != 0:
-                    return extract_literal_value(inner[1])
+                    return extract_literal_value(inner[1], system_arch)
                 else:
-                    return extract_literal_value(inner[2])
+                    return extract_literal_value(inner[2], system_arch)
                     
     # Fallback to first inner child for Cast nodes and Paren nodes (including BuiltinBitCastExpr)
     if kind in ["ParenExpr", "ImplicitCastExpr", "CStyleCastExpr", "BuiltinBitCastExpr"]:
         if "inner" in node:
             for child in node["inner"]:
-                res = extract_literal_value(child)
+                res = extract_literal_value(child, system_arch)
                 if res is not None:
                     return res
     return None
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        res = dump_ast_and_extract(sys.argv[1])
+        system_arch = 64
+        if "--32" in sys.argv:
+            system_arch = 32
+            sys.argv.remove("--32")
+        res = dump_ast_and_extract(sys.argv[1], system_arch=system_arch)
         print(json.dumps(res, indent=2))
     else:
-        print("Usage: python ast_parser.py <source.probe.c>")
+        print("Usage: python ast_parser.py <source.probe.c> [--32]")
