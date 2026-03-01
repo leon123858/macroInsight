@@ -2,9 +2,9 @@ import re
 import os
 import subprocess
 
-def inject_probes(source_path, target_path=None, compile_flags=None, known_macros=None):
+def inject_probes(source_path, target_path=None, compile_flags=None, known_macros=None, clang_exec="clang"):
     """
-    Runs `clang -E -dM` to get all defined macros, filters for parameterless macros,
+    Runs `clang -E -dM` (or custom clang) to get all defined macros, filters for parameterless macros,
     and appends a global variable probe for each at the end of the source file.
     """
     if target_path is None:
@@ -21,8 +21,8 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
         original_code = f.read()
 
     # Run clang -E -dM to extract all macros including those from headers
-    cmd = ["clang", "-E", "-dM"] + compile_flags + [source_path]
-    print(f"Running Clang Preprocessor: {' '.join(cmd)}")
+    cmd = [clang_exec, "-E", "-dM"] + compile_flags + [source_path]
+    print(f"Running Preprocessor: {' '.join(cmd)}")
     
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)

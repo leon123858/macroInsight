@@ -2,17 +2,17 @@ import os
 from macro_extractor import inject_probes
 from ast_parser import dump_ast_and_extract
 
-def process_file(source_file, compile_flags=None, known_macros=None):
+def process_file(source_file, compile_flags=None, known_macros=None, clang_exec="clang"):
     print(f"Processing: {source_file}")
     base, ext = os.path.splitext(source_file)
     probe_file = f"{base}.probe{ext}"
     
     try:
         # Step 1: Inject probes
-        inject_probes(source_file, probe_file, compile_flags, known_macros)
+        inject_probes(source_file, probe_file, compile_flags, known_macros, clang_exec)
         
         # Step 2: Extract via Clang AST
-        macros = dump_ast_and_extract(probe_file, compile_flags)
+        macros = dump_ast_and_extract(probe_file, compile_flags, clang_exec)
         
         return macros
     finally:

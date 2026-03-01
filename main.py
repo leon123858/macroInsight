@@ -21,12 +21,12 @@ def generate_compile_commands(repo_dir, build_dir):
             return None
     return compile_commands_path
 
-def fallback_find_c_files(repo_dir):
+def fallback_find_c_files(repo_dir, clang_exec="clang", compile_fallback=False):
+    assert compile_fallback, "compile_commands.json missing and compile_fallback is not enabled. Halting to avoid inaccurate extraction."
     print("WARNING: compile_commands.json not found!", file=sys.stderr)
     print("WARNING: Falling back to naive recursive C file search.", file=sys.stderr)
     print("WARNING: This means critical compiler flags, predefined macros (-D), and include paths (-I) will be missing.", file=sys.stderr)
     print("WARNING: Macro extraction results may be incomplete or inaccurate!", file=sys.stderr)
-    assert(False);
     commands = []
     # Find all .c, .cpp, .cxx files excluding the 'build' directory
     repo_path = Path(repo_dir)
@@ -36,7 +36,7 @@ def fallback_find_c_files(repo_dir):
                 commands.append({
                     "file": str(f.absolute()),
                     "directory": repo_dir,
-                    "command": f"clang -I{repo_dir}"
+                    "command": f"{clang_exec} -I{repo_dir}"
                 })
     return commands
 
@@ -87,12 +87,16 @@ def main():
     parser = argparse.ArgumentParser(description="Extract compiler macro values using Clang AST (Batch Mode).")
     parser.add_argument("--repo-dir", "-r", help="Repository directory containing source code", default=".\\sample")
     parser.add_argument("--output", "-o", help="Output JSON file", default=".\\macros_output.json")
+    parser.add_argument("--clang", "-c", help="Clang executable to use", default="clang")
+    parser.add_argument("--compile-fallback", action="store_true", help="Allow fallback to recursive C file search if compile_commands.json is missing")
     
     args = parser.parse_args()
     
     repo_dir = os.path.abspath(args.repo_dir)
     build_dir = os.path.join(repo_dir, "build")
     output_file = os.path.abspath(args.output)
+    clang_exec = args.clang
+    compile_fallback = args.compile_fallback
     
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
     
@@ -109,7 +113,7 @@ def main():
 
     commands = []
     if not os.path.exists(compile_commands_path):
-        commands = fallback_find_c_files(repo_dir)
+        commands = fallback_find_c_files(repo_dir, clang_exec, compile_fallback)
     else:
         print(f"Reading compile commands from {compile_commands_path}")
         try:
@@ -162,7 +166,7 @@ def main():
                     all_macros[macro_def] = 1 # -DNAME implicitly defines NAME as 1
             i += 1
             
-        macros = process_file(file_path, extract_flags, all_macros)
+        macros = process_file(file_path, extract_flags, all_macros, clang_exec)
         if macros:
             all_macros.update(macros)
         count += 1
