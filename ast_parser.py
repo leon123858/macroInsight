@@ -89,7 +89,6 @@ def extract_literal_value(node):
     if kind == "IntegerLiteral":
         return int(node.get("value", 0))
     elif kind == "ConstantExpr" and "value" in node:
-        # A ConstantExpr often contains the evaluated string value
         try:
             return int(node.get("value", 0))
         except ValueError:
@@ -103,6 +102,8 @@ def extract_literal_value(node):
                 if opcode == "-": return -val
                 if opcode == "~": return ~val
                 if opcode == "+": return val
+                if opcode == "!": return 1 if val == 0 else 0
+                return val
     elif kind == "BinaryOperator":
         opcode = node.get("opcode")
         inner = node.get("inner", [])
@@ -114,17 +115,37 @@ def extract_literal_value(node):
                 if opcode == "-": return left - right
                 if opcode == "*": return left * right
                 if opcode == "/": return left // right if right != 0 else 0
+                if opcode == "%": return left % right if right != 0 else 0
                 if opcode == "|": return left | right
                 if opcode == "&": return left & right
                 if opcode == "^": return left ^ right
                 if opcode == "<<": return left << right
                 if opcode == ">>": return left >> right
-            
-    if "inner" in node:
-        for child in node["inner"]:
-            res = extract_literal_value(child)
-            if res is not None:
-                return res
+                if opcode == "<": return 1 if left < right else 0
+                if opcode == "<=": return 1 if left <= right else 0
+                if opcode == ">": return 1 if left > right else 0
+                if opcode == ">=": return 1 if left >= right else 0
+                if opcode == "==": return 1 if left == right else 0
+                if opcode == "!=": return 1 if left != right else 0
+                if opcode == "&&": return 1 if (left != 0 and right != 0) else 0
+                if opcode == "||": return 1 if (left != 0 or right != 0) else 0
+    elif kind == "ConditionalOperator":
+        inner = node.get("inner", [])
+        if len(inner) >= 3:
+            cond = extract_literal_value(inner[0])
+            if cond is not None:
+                if cond != 0:
+                    return extract_literal_value(inner[1])
+                else:
+                    return extract_literal_value(inner[2])
+                    
+    # Only fallback to first inner child for Cast nodes and Paren nodes
+    if kind in ["ParenExpr", "ImplicitCastExpr", "CStyleCastExpr"]:
+        if "inner" in node:
+            for child in node["inner"]:
+                res = extract_literal_value(child)
+                if res is not None:
+                    return res
     return None
 
 if __name__ == "__main__":
