@@ -1,4 +1,8 @@
 {
+    "TEST_MACRO": 42,
+    "_DEBUG": 1,
+    "_DLL": 1,
+    "_MT": 1,
     "INV_FUNC": -9999,
     "INV_GLOBAL": -9999,
     "INV_PTR": -9999,

@@ -1,59 +1,179 @@
 import os
 import argparse
 import json
-from macro_extractor import inject_probes
-from ast_parser import dump_ast_and_extract
+import subprocess
+import shlex
+import sys
+from pathlib import Path
 
-def process_file(source_file, compile_flags=None, known_macros=None):
-    print(f"Processing: {source_file}")
-    probe_file = source_file.replace(".c", ".probe.c")
-    if source_file == probe_file:
-        probe_file += ".probe.c"
-    
+from core import process_file
+
+def generate_compile_commands(repo_dir, build_dir):
+    compile_commands_path = os.path.join(build_dir, "compile_commands.json")
+    if not os.path.exists(compile_commands_path):
+        print("Generating compile_commands.json via CMake...")
+        # Attempt to run cmake to generate compile_commands.json
+        cmd = ["cmake", "-G", "Unix Makefiles", "-S", repo_dir, "-B", build_dir, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"]
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"CMake failed to configure. Error: {e}", file=sys.stderr)
+            return None
+    return compile_commands_path
+
+def fallback_find_c_files(repo_dir):
+    print("WARNING: compile_commands.json not found!", file=sys.stderr)
+    print("WARNING: Falling back to naive recursive C file search.", file=sys.stderr)
+    print("WARNING: This means critical compiler flags, predefined macros (-D), and include paths (-I) will be missing.", file=sys.stderr)
+    print("WARNING: Macro extraction results may be incomplete or inaccurate!", file=sys.stderr)
+    assert(False);
+    commands = []
+    # Find all .c, .cpp, .cxx files excluding the 'build' directory
+    repo_path = Path(repo_dir)
+    for ext in ("*.c", "*.cpp", "*.cxx", "*.cc"):
+        for f in repo_path.rglob(ext):
+            if "build" not in f.parts:
+                commands.append({
+                    "file": str(f.absolute()),
+                    "directory": repo_dir,
+                    "command": f"clang -I{repo_dir}"
+                })
+    return commands
+
+def extract_flags_from_command(command_str):
+    flags = []
     try:
-        # Step 1: Inject probes
-        inject_probes(source_file, probe_file, compile_flags, known_macros)
+        parts = shlex.split(command_str)
+    except ValueError as e:
+        print(f"Warning: shlex failed to parse command string: {e}")
+        parts = command_str.split()
         
-        # Step 2: Extract via Clang AST
-        macros = dump_ast_and_extract(probe_file, compile_flags)
+    i = 0
+    while i < len(parts):
+        part = parts[i]
         
-        return macros
-    finally:
-        # Step 3: Cleanup probe file
-        if os.path.exists(probe_file):
-            print(f"Cleaning up {probe_file}")
-            os.remove(probe_file)
+        # Match standalone -I or -D 
+        if part in ("-I", "-D", "-isystem", "-include"):
+            flags.append(part)
+            if i + 1 < len(parts):
+                i += 1
+                flags.append(parts[i])
+        # Match concatenated -I... or -D...
+        elif part.startswith(("-I", "-D", "-isystem", "-include")):
+            flags.append(part)
+        
+        i += 1
+        
+    return flags
+
+def extract_flags_from_arguments(arguments_list):
+    flags = []
+    i = 0
+    while i < len(arguments_list):
+        arg = arguments_list[i]
+        
+        if arg in ("-I", "-D", "-isystem", "-include"):
+            flags.append(arg)
+            if i + 1 < len(arguments_list):
+                i += 1
+                flags.append(arguments_list[i])
+        elif arg.startswith(("-I", "-D", "-isystem", "-include")):
+            flags.append(arg)
+            
+        i += 1
+    return flags
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract compiler macro values using Clang AST.")
-    parser.add_argument("files", nargs="+", help="C source files to process")
-    parser.add_argument("--flags", "-f", nargs=argparse.REMAINDER, help="Compilation flags for Clang", default=[])
-    parser.add_argument("--output", "-o", help="Output JSON file", default="macros_output.json")
+    parser = argparse.ArgumentParser(description="Extract compiler macro values using Clang AST (Batch Mode).")
+    parser.add_argument("--repo-dir", "-r", help="Repository directory containing source code", default=".\\sample")
+    parser.add_argument("--output", "-o", help="Output JSON file", default=".\\macros_output.json")
     
     args = parser.parse_args()
     
-    all_macros = {}
-    if os.path.exists(args.output):
-        try:
-            with open(args.output, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if content:
-                    all_macros = json.loads(content)
-        except Exception as e:
-            print(f"Warning: Could not read existing output: {e}")
+    repo_dir = os.path.abspath(args.repo_dir)
+    build_dir = os.path.join(repo_dir, "build")
+    output_file = os.path.abspath(args.output)
     
-    for file in args.files:
-        if os.path.isfile(file):
-            macros = process_file(file, args.flags, all_macros)
-            if macros:
-                all_macros.update(macros)
-        else:
-            print(f"File not found: {file}")
+    compile_commands_path = os.path.join(build_dir, "compile_commands.json")
+    
+    if not os.path.exists(compile_commands_path):
+        generated_path = generate_compile_commands(repo_dir, build_dir)
+        if generated_path and os.path.exists(generated_path):
+            compile_commands_path = generated_path
             
-    with open(args.output, "w", encoding="utf-8") as f:
+    if os.path.exists(output_file):
+        try:
+            os.remove(output_file)
+        except OSError as e:
+            print(f"Warning: Could not remove existing output file: {e}")
+
+    commands = []
+    if not os.path.exists(compile_commands_path):
+        commands = fallback_find_c_files(repo_dir)
+    else:
+        print(f"Reading compile commands from {compile_commands_path}")
+        try:
+            with open(compile_commands_path, "r", encoding="utf-8") as f:
+                commands = json.load(f)
+        except Exception as e:
+            print(f"Error reading compile_commands.json: {e}", file=sys.stderr)
+            sys.exit(1)
+            
+    all_macros = {}
+    count = 0
+    
+    for cmd in commands:
+        file_path = cmd.get("file", "")
+        if not file_path.endswith((".c", ".cpp", ".cxx", ".cc")):
+            continue
+            
+        if not os.path.isabs(file_path):
+            directory = cmd.get("directory", repo_dir)
+            file_path = os.path.join(directory, file_path)
+            
+        extract_flags = []
+        if "command" in cmd:
+            extract_flags = extract_flags_from_command(cmd["command"])
+        elif "arguments" in cmd:
+            extract_flags = extract_flags_from_arguments(cmd["arguments"])
+            
+        # Extract initial constant definitions directly from the compile -D flags
+        # so they are correctly accounted for out-of-the-box before compiling AST.
+        i = 0
+        while i < len(extract_flags):
+            flag = extract_flags[i]
+            macro_def = None
+            if flag == "-D" and i + 1 < len(extract_flags):
+                macro_def = extract_flags[i+1]
+                i += 1
+            elif flag.startswith("-D"):
+                macro_def = flag[2:]
+                
+            if macro_def:
+                # Format is usually NAME=VALUE or NAME
+                if "=" in macro_def:
+                    name, value = macro_def.split("=", 1)
+                    try:
+                        # Attempt to parse integer values since AST evaluates to int
+                        all_macros[name] = int(value, 0)
+                    except ValueError:
+                        all_macros[name] = value
+                else:
+                    all_macros[macro_def] = 1 # -DNAME implicitly defines NAME as 1
+            i += 1
+            
+        macros = process_file(file_path, extract_flags, all_macros)
+        if macros:
+            all_macros.update(macros)
+        count += 1
+        
+    print(f"Processed {count} files.")
+    
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(all_macros, f, indent=4)
         
-    print(f"Extracted {len(all_macros)} macros. Saved to {args.output}")
+    print(f"Extracted {len(all_macros)} macros. Saved to {output_file}")
+
 
 if __name__ == "__main__":
     main()

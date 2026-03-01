@@ -10,7 +10,8 @@ def dump_ast_and_extract(source_file, compile_flags=None):
     if compile_flags is None:
         compile_flags = []
         
-    cmd = ["clang", "-x", "c", "-fsyntax-only", "-Xclang", "-ast-dump=json"] + compile_flags + [source_file]
+    lang = "c++" if source_file.endswith((".cpp", ".cxx", ".cc")) else "c"
+    cmd = ["clang", "-x", lang, "-fsyntax-only", "-Xclang", "-ast-dump=json"] + compile_flags + [source_file]
     print(f"Running Clang: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
     
