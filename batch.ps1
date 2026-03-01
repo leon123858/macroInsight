@@ -1,15 +1,9 @@
 param(
-    [string]$RepoUrl = "https://github.com/madler/zlib.git",
-    [string]$RepoDir = ".\sample\zlib",
+    [string]$RepoDir = ".\sample",
     [string]$Output = ".\macros_output.json"
 )
 
 $CompileCommands = Join-Path $RepoDir "build\compile_commands.json"
-
-if (-not (Test-Path $RepoDir)) {
-    Write-Host "Cloning $RepoUrl into $RepoDir..."
-    git clone --depth 1 --shallow-submodules --recurse-submodules $RepoUrl $RepoDir
-}
 
 if (-not (Test-Path $CompileCommands)) {
     Write-Host "Generating compile_commands.json via CMake..."

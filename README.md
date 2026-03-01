@@ -17,18 +17,12 @@ This tool leverages Clang's `-fsyntax-only` AST dumping capabilities along with 
 
 You must have `uv`, `clang`, and python installed.
 
-To process a single file:
 ```bash
-uv run main.py <path_to_source.c>
+.\batch.ps1 -RepoDir "<path_to_source_code>" -Output "<path_to_output>"
 ```
 
-### With `compile_commands.json`
-If your project uses CMake, you can generate a `compile_commands.json` which has the exact `-I` include paths and `-D` defines your project requires.
+Sample
 
-You can then pass those flags explicitly using `--flags` or `-f`.
-For example, if you parsed `compile_commands.json` to extract `flags = ["-I/src/include", "-DDEBUG=1"]`, you can run:
 ```bash
-uv run main.py src/target.c -f "-I/src/include" "-DDEBUG=1"
+.\batch.ps1 -RepoDir ".\sample" -Output ".\sample\macros.json"
 ```
-
-The output will be saved to `macros_output.json`.
