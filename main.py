@@ -40,7 +40,7 @@ def fallback_find_c_files(repo_dir, clang_exec="clang", compile_fallback=False):
                 })
     return commands
 
-def extract_flags_from_command(command_str):
+def extract_flags_from_command(command_str, directory):
     flags = []
     try:
         parts = shlex.split(command_str)
@@ -52,8 +52,21 @@ def extract_flags_from_command(command_str):
     while i < len(parts):
         part = parts[i]
         
+        if part.startswith("@"):
+            rsp_path = part[1:]
+            if not os.path.isabs(rsp_path):
+                rsp_path = os.path.join(directory, rsp_path)
+            
+            if os.path.exists(rsp_path):
+                try:
+                    with open(rsp_path, "r", encoding="utf-8") as f:
+                        rsp_content = f.read()
+                        rsp_args = shlex.split(rsp_content)
+                        flags.extend(extract_flags_from_arguments(rsp_args, directory))
+                except Exception as e:
+                    print(f"Warning: Could not read response file {rsp_path}: {e}")
         # Match standalone -I or -D 
-        if part in ("-I", "-D", "-isystem", "-include"):
+        elif part in ("-I", "-D", "-isystem", "-include"):
             flags.append(part)
             if i + 1 < len(parts):
                 i += 1
@@ -66,13 +79,28 @@ def extract_flags_from_command(command_str):
         
     return flags
 
-def extract_flags_from_arguments(arguments_list):
+def extract_flags_from_arguments(arguments_list, directory):
     flags = []
     i = 0
     while i < len(arguments_list):
         arg = arguments_list[i]
         
-        if arg in ("-I", "-D", "-isystem", "-include"):
+        if arg.startswith("@"):
+            rsp_path = arg[1:]
+            if not os.path.isabs(rsp_path):
+                rsp_path = os.path.join(directory, rsp_path)
+            
+            if os.path.exists(rsp_path):
+                try:
+                    with open(rsp_path, "r", encoding="utf-8") as f:
+                        # Some rsp files have multiple parameters on one line or multiple lines
+                        rsp_content = f.read()
+                        rsp_args = shlex.split(rsp_content)
+                        # Expand these arguments
+                        flags.extend(extract_flags_from_arguments(rsp_args, directory))
+                except Exception as e:
+                    print(f"Warning: Could not read response file {rsp_path}: {e}")
+        elif arg in ("-I", "-D", "-isystem", "-include"):
             flags.append(arg)
             if i + 1 < len(arguments_list):
                 i += 1
@@ -131,15 +159,15 @@ def main():
         if not file_path.endswith((".c", ".cpp", ".cxx", ".cc")):
             continue
             
+        directory = cmd.get("directory", repo_dir)
         if not os.path.isabs(file_path):
-            directory = cmd.get("directory", repo_dir)
             file_path = os.path.join(directory, file_path)
             
         extract_flags = []
         if "command" in cmd:
-            extract_flags = extract_flags_from_command(cmd["command"])
+            extract_flags = extract_flags_from_command(cmd["command"], directory)
         elif "arguments" in cmd:
-            extract_flags = extract_flags_from_arguments(cmd["arguments"])
+            extract_flags = extract_flags_from_arguments(cmd["arguments"], directory)
             
         # Extract initial constant definitions directly from the compile -D flags
         # so they are correctly accounted for out-of-the-box before compiling AST.

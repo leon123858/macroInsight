@@ -1,4 +1,4 @@
-#include "../include/math_macros.h"
+#include "math_macros.h"
 
 void dummy_utils(void) {
     int x = MATH_ADD;

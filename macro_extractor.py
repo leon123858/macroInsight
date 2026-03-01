@@ -40,6 +40,7 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
     probes = []
     for match in define_pattern.finditer(macro_output):
         macro_name = match.group(1)
+        
         # Skip internal compiler macros starting with __ to speed things up
         if macro_name.startswith("__") and macro_name.endswith("__"):
             continue

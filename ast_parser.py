@@ -35,7 +35,9 @@ def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang"):
                 extracted_val = extract_value_from_vardecl(node)
                 if extracted_val is not None:
                     extracted_macros[macro_name] = extracted_val
-
+                else:
+                    print(f"DEBUG: Failed to extract {macro_name} from VarDecl")
+                    
         if "inner" in node:
             for child in node["inner"]:
                 visit_node(child)
@@ -49,7 +51,6 @@ def extract_value_from_vardecl(node):
     Extract the integer value from a VarDecl initialization.
     Handles ChooseExpr correctly by evaluating the condition.
     """
-    # Find ChooseExpr if it exists inside VarDecl's inner nodes
     choose_expr = find_node_of_kind(node, "ChooseExpr")
     
     if choose_expr:
@@ -65,7 +66,13 @@ def extract_value_from_vardecl(node):
             else:
                 return extract_literal_value(false_branch)
     
-    # Fallback
+    # Fallback to evaluating the initialization expression directly if ChooseExpr isn't present
+    if "inner" in node:
+        for child in node["inner"]:
+            val = extract_literal_value(child)
+            if val is not None:
+                return val
+                
     return extract_literal_value(node)
 
 
@@ -89,11 +96,50 @@ def extract_literal_value(node):
     kind = node.get("kind")
     if kind == "IntegerLiteral":
         return int(node.get("value", 0))
+    elif kind == "CharacterLiteral":
+        return int(node.get("value", 0))
     elif kind == "ConstantExpr" and "value" in node:
         try:
             return int(node.get("value", 0))
         except ValueError:
             pass
+    elif kind == "UnaryExprOrTypeTraitExpr":
+        # e.g. sizeof
+        name = node.get("name")
+        if name == "sizeof":
+            arg_type = node.get("argType", {}).get("qualType", "")
+            # Basic fallback sizes for typical 64-bit systems
+            # For complex structs or arrays, we'd need more logic, but this covers basic types and simple arrays
+            # Let's extract array size if it matches e.g. 'int[10]'
+            import re
+            arr_match = re.match(r'(.+)\[(\d+)\]', arg_type)
+            if arr_match:
+                base_type = arr_match.group(1).strip()
+                count = int(arr_match.group(2))
+                sizes = {
+                    "char": 1, "signed char": 1, "unsigned char": 1,
+                    "short": 2, "unsigned short": 2,
+                    "int": 4, "unsigned int": 4, "float": 4,
+                    "long": 4, "unsigned long": 4, # Standard Windows long is 4 bytes
+                    "long long": 8, "unsigned long long": 8, "double": 8,
+                }
+                if base_type in sizes:
+                    return sizes[base_type] * count
+            
+            # Simple types
+            sizes = {
+                "char": 1, "signed char": 1, "unsigned char": 1,
+                "short": 2, "unsigned short": 2,
+                "int": 4, "unsigned int": 4, "float": 4,
+                "long": 4, "unsigned long": 4,
+                "long long": 8, "unsigned long long": 8, "double": 8,
+            }
+            if arg_type in sizes:
+                return sizes[arg_type]
+            if "*" in arg_type:
+                return 8 # 64-bit pointer
+            
+        return None
     elif kind == "UnaryOperator":
         opcode = node.get("opcode")
         inner = node.get("inner", [])
@@ -140,8 +186,8 @@ def extract_literal_value(node):
                 else:
                     return extract_literal_value(inner[2])
                     
-    # Only fallback to first inner child for Cast nodes and Paren nodes
-    if kind in ["ParenExpr", "ImplicitCastExpr", "CStyleCastExpr"]:
+    # Fallback to first inner child for Cast nodes and Paren nodes (including BuiltinBitCastExpr)
+    if kind in ["ParenExpr", "ImplicitCastExpr", "CStyleCastExpr", "BuiltinBitCastExpr"]:
         if "inner" in node:
             for child in node["inner"]:
                 res = extract_literal_value(child)
