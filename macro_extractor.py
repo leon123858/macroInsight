@@ -141,7 +141,9 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
     injected_names = []  # names actually written, in order, after all filtering
     for macro_name, macro_value in macro_pairs:
         # Skip internal compiler macros
-        if macro_name.startswith("__") and macro_name.endswith("__"):
+        if macro_name.startswith("__"):
+            continue
+        if macro_name.startswith("_"):
             continue
 
         # Skip already-known macros (avoid re-processing across source files)
