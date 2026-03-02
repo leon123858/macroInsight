@@ -11,16 +11,26 @@ def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang", sy
         compile_flags = []
         
     lang = "c++" if source_file.endswith((".cpp", ".cxx", ".cc")) else "c"
-    cmd = [clang_exec, "-x", lang, "-fsyntax-only", "-Xclang", "-ast-dump=json"] + compile_flags + [source_file]
+    cmd = [clang_exec, "-x", lang, "-fsyntax-only", "-Xclang", "-ast-dump-filter=PROBE_", "-Xclang", "-ast-dump=json"] + compile_flags + [source_file]
     print(f"Running AST Dump: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
     
-    try:
-        ast_data = json.loads(result.stdout)
-    except json.JSONDecodeError as e:
-        print("Failed to decode Clang AST JSON. Output might be too large or malformed.", file=sys.stderr)
-        raise e
-        
+    ast_nodes = []
+    decoder = json.JSONDecoder()
+    text = result.stdout
+    pos = 0
+    while pos < len(text):
+        text_slice = text[pos:].lstrip()
+        if not text_slice:
+            break
+        try:
+            obj, idx = decoder.raw_decode(text_slice)
+            ast_nodes.append(obj)
+            pos += len(text[pos:]) - len(text_slice) + idx
+        except json.JSONDecodeError as e:
+            print(f"Failed to decode part of Clang AST JSON: {e}", file=sys.stderr)
+            break
+            
     extracted_macros = {}
     
     def visit_node(node):
@@ -43,7 +53,9 @@ def dump_ast_and_extract(source_file, compile_flags=None, clang_exec="clang", sy
             for child in node["inner"]:
                 visit_node(child)
 
-    visit_node(ast_data)
+    for node in ast_nodes:
+        visit_node(node)
+        
     return extracted_macros
 
 
