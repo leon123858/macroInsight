@@ -341,7 +341,7 @@ def process_file(source_file: str,
         success, removed_macro_names = compile_probe(compile_cmd, probe_c_path, directory)
         if not success:
             print(f"[core] Probe compilation failed for {source_file}", file=sys.stderr)
-            return None
+            assert False, "Probe compilation failed"
 
         # Update expected probe names (remove the ones that were dropped)
         remaining_probe_names = [n for n in expected_probe_names if n not in removed_macro_names]
@@ -353,7 +353,28 @@ def process_file(source_file: str,
         for name in removed_macro_names:
             macros[name] = None
 
+        # ── Self-verification ──────────────────────────────────────────────
+        # Every name that inject_probes wrote into probe.c should appear in the
+        # returned dict (either as an integer value, or as None if it was removed
+        # because it's not a compile-time constant).  A name that is completely
+        # absent means the ELF reader failed to locate the symbol in the object
+        # file — this is unexpected and indicates a bug or an unsupported section.
+        all_expected = set(expected_probe_names)
+        actually_returned = set(macros.keys())
+        silently_missing = all_expected - actually_returned
+
+        if silently_missing:
+            print(
+                f"[core] WARNING: {len(silently_missing)} probe(s) were expected but "
+                f"not returned by the ELF reader for {source_file}:",
+                file=sys.stderr,
+            )
+            for name in sorted(silently_missing):
+                print(f"[core]   - MISSING: {name}", file=sys.stderr)
+        # ──────────────────────────────────────────────────────────────────
+
         return macros
+
 
     finally:
         # Step 4: cleanup temp files
@@ -372,9 +393,35 @@ def process_file(source_file: str,
 
 def _extract_preprocessor_flags(command_str: str, directory: str) -> List[str]:
     """
-    Extract flags relevant to the preprocessor from an original compile command:
-    -D, -I, -isystem, -include, and @response files (already expanded by
-    build_probe_compile_cmd, but here we expand inline for simplicity).
+    Extract flags relevant to 'clang -E -dM' from an original compile command.
+
+    We want the preprocessor to see the SAME macro environment as the real compile,
+    so we include ALL flags that influence predefined macros or include search paths:
+
+    Category                      Examples
+    ─────────────────────────────────────────────────────────────
+    Macro definitions/undefs      -D, -U
+    Include search paths          -I, -isystem, -isysroot,
+                                  --sysroot, -include, -iprefix,
+                                  -iwithprefix, -iquote
+    Target triple                 --target=, -target
+    Architecture / CPU            -march, -mcpu, -mfpu, -mtune,
+                                  -mfloat-abi, -mabi, -mthumb, -marm,
+                                  -m32, -m64, -mhard-float, -msoft-float
+    Language standard             -std, -ansi, -x
+    MS-compat / extensions        -fms-extensions, -fms-compatibility,
+                                  -fms-compatibility-version,
+                                  -fmsc-version, -fgnuc-version
+    Feature flags affecting macros -fno-builtin, -fno-math-errno,
+                                  -ffreestanding, -fno-exceptions,
+                                  -fno-rtti, -fshort-wchar,
+                                  -fshort-enums, -funsigned-char,
+                                  -fsigned-char, -fno-signed-zeros
+    ARM Thumb interwork            -mthumb-interwork
+    ─────────────────────────────────────────────────────────────
+
+    Flags that are NOT included (only affect code-gen / linking, not macros):
+      -c, -o, -O*, -g*, -W*, -f{sanitize,coverage,...}, -save-temps, etc.
     """
     try:
         parts = shlex.split(command_str)
@@ -383,20 +430,100 @@ def _extract_preprocessor_flags(command_str: str, directory: str) -> List[str]:
 
     parts = _expand_response_files(parts, directory)
 
+    # Flags that take a separate next token as their value
+    FLAGS_WITH_NEXT = {
+        "-D", "-U",
+        "-I", "-isystem", "-isysroot", "-iprefix",
+        "-iwithprefix", "-iwithprefixbefore",
+        "-iquote", "-include", "-include-pch",
+        "-target",                     # old-style target flag
+        "-x",                          # language override
+        "-std",
+        "-arch",                       # macOS multi-arch (clang)
+        "--sysroot",
+        "-march", "-mcpu", "-mfpu", "-mtune",
+        "-mfloat-abi", "-mabi",
+        "-fms-compatibility-version",
+        "-fmsc-version",
+        "-fgnuc-version",
+    }
+
+    # Flag PREFIXES: the flag and its value are a single token (flag=value or flagVALUE)
+    PREFIXES = (
+        "-D", "-U",
+        "-I", "-isystem", "-isysroot", "-iprefix",
+        "-iwithprefix", "-iwithprefixbefore",
+        "-iquote", "-include",
+        "--target=",                   # --target=<triple>
+        "-target=",
+        "-x",
+        "-std=",
+        "--sysroot=",
+        "-march=", "-mcpu=", "-mfpu=", "-mtune=",
+        "-mfloat-abi=", "-mabi=",
+        "-fms-compatibility-version=",
+        "-fmsc-version=",
+        "-fgnuc-version=",
+    )
+
+    # Standalone boolean flags that directly affect predefined macros
+    STANDALONE = {
+        "-mthumb", "-marm", "-mthumb-interwork",
+        "-m32", "-m64",
+        "-mhard-float", "-msoft-float",
+        "-ansi",
+        "-fms-extensions",
+        "-fms-compatibility",
+        "-fno-ms-extensions",
+        "-ffreestanding",
+        "-fno-builtin",
+        "-fshort-wchar",
+        "-fshort-enums",
+        "-funsigned-char",
+        "-fsigned-char",
+        "-fno-signed-char",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-math-errno",
+        "-fno-signed-zeros",
+        "-fno-strict-aliasing",
+    }
+
     flags = []
     i = 0
     while i < len(parts):
         part = parts[i]
-        if part in ("-D", "-I", "-isystem", "-include"):
+
+        # Always skip: compiler executable (first positional) and input file (last .c/.cpp)
+        # We skip the first positional by relying on the fact that compiler execs
+        # start without '-' but we can't know the input file without extra logic.
+        # Instead we simply never emit pure positional args (those without '-').
+
+        if part in FLAGS_WITH_NEXT:
             flags.append(part)
             if i + 1 < len(parts):
                 i += 1
                 flags.append(parts[i])
-        elif part.startswith(("-D", "-I", "-isystem", "-include")):
+
+        elif any(part.startswith(pfx) for pfx in PREFIXES):
             flags.append(part)
+
+        elif part in STANDALONE:
+            flags.append(part)
+
+        # -Xclang pairs: some pass-through flags affect clang's internal state
+        # We forward only safe ones (not -ast-dump, -gcodeview, etc.)
+        elif part == "-Xclang" and i + 1 < len(parts):
+            next_val = parts[i + 1]
+            _SAFE_XCLANG = {"-fms-compatibility", "-fno-builtin"}
+            if next_val in _SAFE_XCLANG:
+                flags.extend([part, next_val])
+            i += 1  # always consume the next token
+
         i += 1
 
     return flags
+
 
 
 def _extract_cmdline_macros(flags: List[str]) -> Dict[str, object]:
