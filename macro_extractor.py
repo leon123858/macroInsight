@@ -138,6 +138,7 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
             seen_names.add(name)
 
     probes = []
+    injected_names = []  # names actually written, in order, after all filtering
     for macro_name, macro_value in macro_pairs:
         # Skip internal compiler macros
         if macro_name.startswith("__") and macro_name.endswith("__"):
@@ -153,6 +154,7 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
         if not value_str:
             # Include guard / flag macro with no value → trivially 1
             probes.append(PROBE_TEMPLATE_EMPTY.format(name=macro_name))
+            injected_names.append(macro_name)
             continue
 
         # Skip values that cannot be cast to long long at compile time
@@ -160,16 +162,15 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
             continue
 
         # Use the __builtin_constant_p guard for everything else.
-        # If the macro is not a compile-time integer constant, -9999LL is stored
-        # and elf_reader.py maps that to None.
         probes.append(PROBE_TEMPLATE_MAYBE.format(name=macro_name))
+        injected_names.append(macro_name)
 
     final_code = original_code + "\n\n/* --- MACRO PROBES --- */\n" + "".join(probes)
 
     with open(target_path, 'w', encoding='utf-8') as f:
         f.write(final_code)
 
-    return target_path
+    return target_path, injected_names
 
 
 if __name__ == "__main__":

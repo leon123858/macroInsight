@@ -10,7 +10,7 @@ Pipeline:
 """
 
 import os
-import re
+
 import sys
 import subprocess
 import shlex
@@ -310,8 +310,8 @@ def process_file(source_file: str,
     probe_obj_path = probe_c_path.replace(ext, ".obj")
 
     try:
-        # Step 1: inject probes
-        inject_probes(
+        # Step 1: inject probes — returns (path, list_of_injected_macro_names)
+        _, injected_names = inject_probes(
             source_file,
             probe_c_path,
             preprocessor_flags,
@@ -320,11 +320,9 @@ def process_file(source_file: str,
             cmdline_macros=cmdline_macros,
         )
 
-        # Determine the set of probe names written to the file
-        with open(probe_c_path, "r", encoding="utf-8") as f:
-            probe_content = f.read()
-        probe_pattern = re.compile(r'\bPROBE_([A-Za-z0-9_]+)\b')
-        expected_probe_names = list(dict.fromkeys(probe_pattern.findall(probe_content)))
+        # injected_names is the authoritative list of macros written to probe.c,
+        # already deduplicated and filtered by inject_probes.
+        expected_probe_names = injected_names
 
         if not expected_probe_names:
             print(f"[core] No probes generated for {source_file}")
