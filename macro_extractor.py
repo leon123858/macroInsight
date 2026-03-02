@@ -2,7 +2,7 @@ import re
 import os
 import subprocess
 
-def inject_probes(source_path, target_path=None, compile_flags=None, known_macros=None, clang_exec="clang"):
+def inject_probes(source_path, target_path=None, compile_flags=None, known_macros=None, clang_exec="clang", cmdline_macros=None):
     """
     Runs `clang -E -dM` (or custom clang) to get all defined macros, filters for parameterless macros,
     and appends a global variable probe for each at the end of the source file.
@@ -15,6 +15,9 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
     
     if known_macros is None:
         known_macros = {}
+
+    if cmdline_macros is None:
+        cmdline_macros = {}
 
     # Read original source code
     with open(source_path, 'r', encoding='utf-8') as f:
@@ -37,11 +40,20 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
     # We allow the value to be empty (e.g., define guards like `#define MACRO_NAME`)
     define_pattern = re.compile(r'^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(?:[ \t]+(.*))?$', re.MULTILINE)
     
+    # Build unified list of (name, value_str) from both preprocessor output and -D command-line macros.
+    # cmdline_macros entries are appended after so they can override/supplement the preprocessor list.
+    macro_pairs = [(m.group(1), m.group(2)) for m in define_pattern.finditer(macro_output)]
+    # NOTE: clang -E -dM already includes macros passed via -D in its output, so we must
+    # deduplicate to avoid generating two PROBE_ declarations for the same macro name
+    # (which would cause a redefinition compile error in the probe file).
+    seen_names = {name for name, _ in macro_pairs}
+    for name, value in cmdline_macros.items():
+        if name not in seen_names:
+            macro_pairs.append((name, str(value) if value != 1 else None))
+            seen_names.add(name)
+
     probes = []
-    for match in define_pattern.finditer(macro_output):
-        macro_name = match.group(1)
-        macro_value = match.group(2)
-        
+    for macro_name, macro_value in macro_pairs:
         # Skip internal compiler macros starting with __ to speed things up
         if macro_name.startswith("__") and macro_name.endswith("__"):
             continue

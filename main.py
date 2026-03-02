@@ -171,31 +171,6 @@ def main():
         elif "arguments" in cmd:
             extract_flags = extract_flags_from_arguments(cmd["arguments"], directory)
             
-        # Extract initial constant definitions directly from the compile -D flags
-        # so they are correctly accounted for out-of-the-box before compiling AST.
-        i = 0
-        while i < len(extract_flags):
-            flag = extract_flags[i]
-            macro_def = None
-            if flag == "-D" and i + 1 < len(extract_flags):
-                macro_def = extract_flags[i+1]
-                i += 1
-            elif flag.startswith("-D"):
-                macro_def = flag[2:]
-                
-            if macro_def:
-                # Format is usually NAME=VALUE or NAME
-                if "=" in macro_def:
-                    name, value = macro_def.split("=", 1)
-                    try:
-                        # Attempt to parse integer values since AST evaluates to int
-                        all_macros[name] = int(value, 0)
-                    except ValueError:
-                        all_macros[name] = value
-                else:
-                    all_macros[macro_def] = 1 # -DNAME implicitly defines NAME as 1
-            i += 1
-            
         macros = process_file(file_path, extract_flags, all_macros, clang_exec, system_arch)
         if macros:
             all_macros.update(macros)
