@@ -61,7 +61,7 @@ def build_probe_compile_cmd(original_cmd: str,
     # Flags whose NEXT token should also be removed (-o <file>, -MF <depfile>, etc.)
     REMOVE_WITH_NEXT = {"-MF", "-MT", "-MQ"}
     # Flags whose prefix should be removed (e.g. -Xclang -ast-dump-filter=...)
-    REMOVE_XCLANG_VALUES = {"-ast-dump", "-ast-dump-filter", "-ast-dump=json", "-gcodeview"}
+    REMOVE_XCLANG_VALUES = {"-ast-dump", "-ast-dump-filter", "-ast-dump=json", "-gcodeview", "--dependent-lib"}
 
     new_parts: List[str] = []
     i = 0
