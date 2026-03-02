@@ -1,21 +1,106 @@
+"""
+macro_extractor.py — Discover all macros in a source file and generate a probe .c file.
+
+The probe file contains one global variable per macro:
+  - If the macro has NO value (e.g. include guards): emit `= 1LL`
+  - If the macro value can plausibly be a constant expression: emit the
+    __builtin_constant_p ternary guard so that non-constant macros write
+    the sentinel -9999LL instead of causing a compile error
+  - If the macro value is obviously a non-expression (C keyword, statement
+    fragment, string literal, etc.): skip it silently
+"""
+
 import re
 import os
 import subprocess
 
-def inject_probes(source_path, target_path=None, compile_flags=None, known_macros=None, clang_exec="clang", cmdline_macros=None):
+# Sentinel value written when a macro is not a compile-time integer constant.
+# elf_reader.py interprets this as None (not evaluable).
+PROBE_SENTINEL = -9999
+
+# Probe template for macros that may or may not be constants at compile time.
+# __builtin_constant_p is supported by both clang and armclang.
+PROBE_TEMPLATE_MAYBE = (
+    "const volatile long long PROBE_{name} = "
+    "__builtin_constant_p((long long)({name})) ? "
+    "(long long)({name}) : -9999LL;\n"
+)
+
+# Probe template for macros with no value (e.g. include guards "#define FOO").
+# These are trivially known to map to 1.
+PROBE_TEMPLATE_EMPTY = "const volatile long long PROBE_{name} = 1LL;\n"
+
+# C keywords that, when they appear as the START of a macro value, indicate
+# the macro expands to a statement or type fragment — not a castable expression.
+_STMT_KEYWORDS = frozenset({
+    # Control flow statements — not expressions
+    "do", "while", "for", "if", "else", "switch", "case", "default",
+    "break", "continue", "return", "goto",
+    # Type / declaration keywords — not castable as (long long)
+    "struct", "union", "enum", "typedef",
+    "void",
+    "int", "float", "double", "char", "long", "short",
+    "unsigned", "signed", "bool", "_Bool",
+    "__int8", "__int16", "__int32", "__int64",
+    "_Float16", "_Float32", "_Float64",
+    # Storage-class / qualifier keywords used as standalone macro values
+    "extern", "static", "register", "auto", "inline", "const", "volatile",
+    # Compiler extensions
+    "sizeof", "alignof", "_Alignof",
+    "__attribute__", "__declspec", "__asm", "asm",
+    "__extension__", "__typeof__", "typeof",
+})
+
+def _macro_value_is_skippable(value: str) -> bool:
     """
-    Runs `clang -E -dM` (or custom clang) to get all defined macros, filters for parameterless macros,
-    and appends a global variable probe for each at the end of the source file.
+    Return True if the macro value cannot be used as a cast-able expression.
+    This is a best-effort heuristic to avoid common compile errors in the probe file.
+    """
+    v = value.strip()
+    if not v:
+        return False  # empty → handled by PROBE_TEMPLATE_EMPTY
+
+    # String literals — cast to long long would fail
+    if v.startswith('"'):
+        return True
+
+    # Check leading token against known non-expression keywords
+    # Extract first identifier-like token from the value
+    first_token_m = re.match(r'([A-Za-z_][A-Za-z0-9_]*)', v)
+    if first_token_m:
+        first_token = first_token_m.group(1)
+        if first_token in _STMT_KEYWORDS:
+            return True
+
+    # Compound statement fragments: starts with '{' or '}'
+    if v.startswith(('{', '}')):
+        return True
+
+    # Preprocessor tokens like '#' at start (e.g. #pragma fragments embedded in macros)
+    if v.startswith('#'):
+        return True
+
+    return False
+
+
+def inject_probes(source_path, target_path=None, compile_flags=None, known_macros=None,
+                  clang_exec="clang", cmdline_macros=None):
+    """
+    Run the compiler preprocessor (-E -dM) to discover all macros, then write
+    a probe .c file with one PROBE_xxx global variable per macro.
+
+    Macros are skipped if:
+      - They are double-underscore built-in macros (__FOO__)
+      - They are already in known_macros
+      - Their value is a non-expression fragment (statement keywords, string literals, etc.)
+      - They are function-like macros (with parameter list — filtered by the define regex)
     """
     if target_path is None:
         target_path = source_path + ".probe.c"
-        
     if compile_flags is None:
         compile_flags = []
-    
     if known_macros is None:
         known_macros = {}
-
     if cmdline_macros is None:
         cmdline_macros = {}
 
@@ -23,29 +108,29 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
     with open(source_path, 'r', encoding='utf-8') as f:
         original_code = f.read()
 
-    # Run clang -E -dM to extract all macros including those from headers
+    # Run compiler -E -dM to discover all macros (including those from headers).
+    # This is the authoritative source — it reflects the exact macro environment
+    # that the compile command would set up.
     cmd = [clang_exec, "-E", "-dM"] + compile_flags + [source_path]
     print(f"Running Preprocessor: {' '.join(cmd)}")
-    
+
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         macro_output = result.stdout
     except subprocess.CalledProcessError as e:
-        print(f"Error running clang preprocessor: {e.stderr}")
-        # We can still proceed even if there are preprocessor warnings/errors
+        print(f"Error running preprocessor: {e.stderr}")
         macro_output = e.stdout if e.stdout else ""
 
-    # `#define MACRO_NAME value`
-    # We enforce a space after the name to avoid capturing `MACRO_NAME(x)`
-    # We allow the value to be empty (e.g., define guards like `#define MACRO_NAME`)
-    define_pattern = re.compile(r'^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(?:[ \t]+(.*))?$', re.MULTILINE)
-    
-    # Build unified list of (name, value_str) from both preprocessor output and -D command-line macros.
-    # cmdline_macros entries are appended after so they can override/supplement the preprocessor list.
+    # Match "#define NAME [value]" — note NO parenthesis after NAME so function-like
+    # macros (NAME(x)) are excluded because -E -dM emits them as "NAME(x) body".
+    define_pattern = re.compile(
+        r'^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(?:[ \t]+(.*))?$',
+        re.MULTILINE,
+    )
+
     macro_pairs = [(m.group(1), m.group(2)) for m in define_pattern.finditer(macro_output)]
-    # NOTE: clang -E -dM already includes macros passed via -D in its output, so we must
-    # deduplicate to avoid generating two PROBE_ declarations for the same macro name
-    # (which would cause a redefinition compile error in the probe file).
+
+    # Add command-line macros not already captured by the preprocessor output
     seen_names = {name for name, _ in macro_pairs}
     for name, value in cmdline_macros.items():
         if name not in seen_names:
@@ -54,33 +139,38 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
 
     probes = []
     for macro_name, macro_value in macro_pairs:
-        # Skip internal compiler macros starting with __ to speed things up
+        # Skip internal compiler macros
         if macro_name.startswith("__") and macro_name.endswith("__"):
             continue
-            
-        # Skip macros we already extracted previously to greatly improve performance
+
+        # Skip already-known macros (avoid re-processing across source files)
         if macro_name in known_macros:
             continue
-            
-        if not macro_value or not macro_value.strip():
-            probe_code = f"long long PROBE_{macro_name} = 1LL;\n"
-        else:
-            probe_code = f"""
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wint-conversion"
-#pragma clang diagnostic ignored "-Wpointer-to-int-cast"
-long long PROBE_{macro_name} = __builtin_choose_expr(__builtin_constant_p({macro_name}), (long long)({macro_name}), -9999LL);
-#pragma clang diagnostic pop
-"""
-        probes.append(probe_code)
 
-    # Append probes to the end of the original code
+        # Normalise the macro value
+        value_str = macro_value.strip() if macro_value else ""
+
+        if not value_str:
+            # Include guard / flag macro with no value → trivially 1
+            probes.append(PROBE_TEMPLATE_EMPTY.format(name=macro_name))
+            continue
+
+        # Skip values that cannot be cast to long long at compile time
+        if _macro_value_is_skippable(value_str):
+            continue
+
+        # Use the __builtin_constant_p guard for everything else.
+        # If the macro is not a compile-time integer constant, -9999LL is stored
+        # and elf_reader.py maps that to None.
+        probes.append(PROBE_TEMPLATE_MAYBE.format(name=macro_name))
+
     final_code = original_code + "\n\n/* --- MACRO PROBES --- */\n" + "".join(probes)
 
     with open(target_path, 'w', encoding='utf-8') as f:
         f.write(final_code)
-        
+
     return target_path
+
 
 if __name__ == "__main__":
     import sys
