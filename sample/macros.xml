@@ -12,12 +12,7 @@
       <define id="COMBINED_CAST_SIZE" value="69"/>
       <define id="COMPLEX_MACROS_H" value="1"/>
       <define id="INVALID_MACROS_H" value="1"/>
-      <define id="INV_ARRAY" value=""/>
       <define id="INV_FLOAT" value="3"/>
-      <define id="INV_FUNC" value=""/>
-      <define id="INV_GLOBAL" value=""/>
-      <define id="INV_PTR" value=""/>
-      <define id="INV_VAR_ADD" value=""/>
       <define id="LOGIC_AND" value="1"/>
       <define id="LOGIC_EQ" value="1"/>
       <define id="LOGIC_GE" value="1"/>

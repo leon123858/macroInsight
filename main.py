@@ -63,7 +63,8 @@ def save_output(data: dict, output_file: str, fmt: str) -> None:
                 val_str = ""
             else:
                 val_str = str(value)
-            ET.SubElement(defines, "define", {"id": str(key), "value": val_str})
+            if val_str != "":
+                ET.SubElement(defines, "define", {"id": str(key), "value": val_str})
         xml_bytes = ET.tostring(root, encoding="utf-8")
         pretty_xml = minidom.parseString(xml_bytes).toprettyxml(indent="  ")
         with open(output_file, "w", encoding="utf-8") as f:
