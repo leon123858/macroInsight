@@ -4,7 +4,8 @@ param(
     [ValidateSet("json", "xml")]
     [string]$OutputFormat = "json",
     [string]$Clang = "clang",
-    [switch]$CompileFallback
+    [switch]$CompileFallback,
+    [string]$CProjectConfig = ""
 )
 
 # Default output filename depends on the chosen format
@@ -58,6 +59,45 @@ $cmakeVersion = & cmake --version 2>&1 | Select-Object -First 1
 Write-Host "Found: $cmakeVersion" -ForegroundColor Green
 
 Write-Host "`nEnvironment checks passed. Running MacroInsight...`n" -ForegroundColor Cyan
+
+# ── Auto-generate CMakeLists.txt from .cproject ──────────────────────────────
+$cmakeListsPath = Join-Path $RepoDir "CMakeLists.txt"
+$cprojectPath = Join-Path $RepoDir ".cproject"
+
+if (-not (Test-Path $cmakeListsPath) -and ($CProjectConfig -ne "")) {
+    Write-Host "No CMakeLists.txt found in '$RepoDir'." -ForegroundColor Yellow
+
+    if (Test-Path $cprojectPath) {
+        Write-Host "Found .cproject - generating CMakeLists.txt via cproject_to_cmake.py ..." -ForegroundColor Cyan
+
+        # cmake_template.txt 與本腳本放在同一目錄
+        $templatePath = Join-Path $PSScriptRoot "cmake_template.txt"
+
+        $genArgs = @(
+            "cproject_to_cmake.py",
+            "--cproject", $cprojectPath,
+            "--template", $templatePath,
+            "--output", $cmakeListsPath
+        )
+        if ($CProjectConfig -ne "") {
+            $genArgs += @("--config", $CProjectConfig)
+        }
+
+        $genCmd = $pythonExec + $genArgs
+        & $genCmd[0] $genCmd[1..($genCmd.Length - 1)]
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "cproject_to_cmake.py failed. Cannot continue without CMakeLists.txt."
+            exit $LASTEXITCODE
+        }
+
+        Write-Host "CMakeLists.txt generated successfully.`n" -ForegroundColor Green
+    }
+    else {
+        Write-Warning "No .cproject found either. main.py will proceed without CMakeLists.txt."
+    }
+}
+# ─────────────────────────────────────────────────────────────────────────────
 
 $pyArgs = @("main.py", "--repo-dir", $RepoDir, "--output", $Output, "--output-format", $OutputFormat, "--clang", $Clang)
 if ($CompileFallback) {

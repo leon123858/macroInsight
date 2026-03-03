@@ -42,24 +42,18 @@ add_link_options("/nodefaultlib")
  
 # 新增包含路徑
 include_directories(
-    "${PROJECT_SOURCE_DIR}/include"
-    "${PROJECT_SOURCE_DIR}/src"
+    "${PROJECT_SOURCE_DIR}/src_fw/common"
+    "${PROJECT_SOURCE_DIR}/src_fw"
 )
  
 # 定義宏
 add_definitions(
-    -DTEST_MACRO=42
-    -DTEST_MACRO_2=SIZE_COMPLEX
-    -DDEBUG=1
-    -DPLATFORM_ARM
-    -DFEATURE_UART=1
-    -DLOG_LEVEL=3
+    -DMACRO=TRUE
 )
  
 # 新增原始碼檔案
 file(GLOB_RECURSE SOURCES "src_fw/*.h" "src_fw/*.c" "src_fw/*.s" "src_fw/*.S")
-list(FILTER SOURCES EXCLUDE REGEX "src/legacy/.*")
-list(FILTER SOURCES EXCLUDE REGEX "src/experimental/.*")
+list(FILTER SOURCES EXCLUDE REGEX "src_fw/file/notused/.*")
 
 add_library(${PROJECT_NAME} OBJECT ${SOURCES})
  

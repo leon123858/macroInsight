@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?fileVersion 4.0.0?>
+<cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+  <storageModule moduleId="org.eclipse.cdt.core.settings">
+
+    <!-- ─── DEBUG configuration ─── -->
+    <cconfiguration id="config.debug.1">
+      <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+        <configuration
+            artifactName="${ProjName}"
+            id="config.debug.1"
+            name="DEBUG"
+            parent="org.eclipse.cdt.build.core.prefbase.cfg">
+
+          <folderInfo id="config.debug.1." name="/" resourcePath="">
+            <toolChain id="tc.debug.1" name="ARM Clang Toolchain"
+                       superClass="org.eclipse.cdt.build.core.prefbase.toolchain">
+
+              <!-- C Compiler tool (name must NOT contain Assembler/Linker/Librarian) -->
+              <tool id="tool.c.compiler.debug.1"
+                    name="ARM Clang C Compiler"
+                    superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler">
+
+                <!--
+                  superClass MUST contain the literal substring "option.defmac"
+                  so the parser (cproject_to_cmake.py) picks it up.
+                -->
+                <option id="opt.defmac.debug.1"
+                        name="Defined symbols (-D)"
+                        superClass="ilg.gnuarmeclipse.managedbuild.cross.option.defmac"
+                        valueType="definedSymbols">
+                  <!-- Mirrored from sample/CMakeLists.txt: add_compile_definitions(...) -->
+                  <listOptionValue builtIn="false" value="TEST_MACRO=42"/>
+                  <listOptionValue builtIn="false" value="TEST_MACRO_2=SIZE_COMPLEX"/>
+                  <!-- Debug-only extras -->
+                  <listOptionValue builtIn="false" value="DEBUG=1"/>
+                  <listOptionValue builtIn="false" value="PLATFORM_ARM"/>
+                  <listOptionValue builtIn="false" value="FEATURE_UART=1"/>
+                  <listOptionValue builtIn="false" value="LOG_LEVEL=3"/>
+                </option>
+
+                <!--
+                  superClass MUST contain the literal substring "option.incpath"
+                -->
+                <option id="opt.incpath.debug.1"
+                        name="Include paths (-I)"
+                        superClass="ilg.gnuarmeclipse.managedbuild.cross.option.incpath"
+                        valueType="includePath">
+                  <!-- Mirrored from sample/CMakeLists.txt: include_directories(include) -->
+                  <listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/include}"/>
+                  <listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src}"/>
+                </option>
+
+              </tool>
+
+            </toolChain>
+          </folderInfo>
+
+          <sourceEntries>
+            <entry excluding="src/legacy|src/experimental"
+                   flags="VALUE_WORKSPACE_PATH"
+                   kind="sourcePath"
+                   name="src"/>
+          </sourceEntries>
+
+        </configuration>
+      </storageModule>
+    </cconfiguration>
+
+    <!-- ─── RELEASE configuration ─── -->
+    <cconfiguration id="config.release.1">
+      <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+        <configuration
+            artifactName="${ProjName}"
+            id="config.release.1"
+            name="RELEASE"
+            parent="org.eclipse.cdt.build.core.prefbase.cfg">
+
+          <folderInfo id="config.release.1." name="/" resourcePath="">
+            <toolChain id="tc.release.1" name="ARM Clang Toolchain"
+                       superClass="org.eclipse.cdt.build.core.prefbase.toolchain">
+
+              <tool id="tool.c.compiler.release.1"
+                    name="ARM Clang C Compiler"
+                    superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler">
+
+                <option id="opt.defmac.release.1"
+                        name="Defined symbols (-D)"
+                        superClass="ilg.gnuarmeclipse.managedbuild.cross.option.defmac"
+                        valueType="definedSymbols">
+                  <!-- Mirrored from sample/CMakeLists.txt: add_compile_definitions(...) -->
+                  <listOptionValue builtIn="false" value="TEST_MACRO=42"/>
+                  <listOptionValue builtIn="false" value="TEST_MACRO_2=SIZE_COMPLEX"/>
+                  <!-- Release-only extras -->
+                  <listOptionValue builtIn="false" value="NDEBUG"/>
+                  <listOptionValue builtIn="false" value="PLATFORM_ARM"/>
+                  <listOptionValue builtIn="false" value="FEATURE_UART=1"/>
+                  <listOptionValue builtIn="false" value="FEATURE_COMPRESSION=1"/>
+                  <listOptionValue builtIn="false" value="LOG_LEVEL=0"/>
+                  <listOptionValue builtIn="false" value="OPTIMIZE_SIZE"/>
+                </option>
+
+                <option id="opt.incpath.release.1"
+                        name="Include paths (-I)"
+                        superClass="ilg.gnuarmeclipse.managedbuild.cross.option.incpath"
+                        valueType="includePath">
+                  <!-- Mirrored from sample/CMakeLists.txt: include_directories(include) -->
+                  <listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/include}"/>
+                  <listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src}"/>
+                  <listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/third_party/zlib}"/>
+                </option>
+
+              </tool>
+
+            </toolChain>
+          </folderInfo>
+
+          <sourceEntries>
+            <entry excluding="src/legacy|src/experimental|src/debug_utils"
+                   flags="VALUE_WORKSPACE_PATH"
+                   kind="sourcePath"
+                   name="src"/>
+          </sourceEntries>
+
+        </configuration>
+      </storageModule>
+    </cconfiguration>
+
+  </storageModule>
+</cproject>
