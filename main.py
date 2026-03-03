@@ -8,6 +8,7 @@ from xml.dom import minidom
 from pathlib import Path
 
 from core import process_file
+from conditional_macro_scanner import collect_conditional_macros
 
 
 def generate_compile_commands(repo_dir, build_dir):
@@ -92,6 +93,14 @@ def main():
                         default="clang")
     parser.add_argument("--compile-fallback", action="store_true",
                         help="Allow fallback to recursive C file search if compile_commands.json is missing")
+    parser.add_argument(
+        "--no-conditional-macro",
+        dest="conditional_macro",
+        action="store_false",
+        default=True,
+        help="Disable the conditional-macro filter; include ALL evaluated macros in output "
+             "(by default only macros referenced in #if/#ifdef/#ifndef/#elif/etc. are kept)",
+    )
 
     args = parser.parse_args()
 
@@ -164,6 +173,16 @@ def main():
         count += 1
 
     print(f"Processed {count} files.")
+
+    # --conditional-macro filter (enabled by default)
+    if args.conditional_macro:
+        print("[conditional-macro] Scanning source files for conditional-compilation macros...")
+        conditional_names = collect_conditional_macros(repo_dir)
+        print(f"[conditional-macro] Found {len(conditional_names)} unique macro names in #if/#ifdef/etc. directives.")
+        before = len(all_macros)
+        all_macros = {k: v for k, v in all_macros.items() if k in conditional_names}
+        print(f"[conditional-macro] Kept {len(all_macros)}/{before} macros "
+              f"(use --no-conditional-macro to disable this filter).")
 
     save_output(all_macros, output_file, output_fmt)
 

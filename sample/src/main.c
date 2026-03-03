@@ -2,6 +2,7 @@
 #include "logic_macros.h"
 #include "invalid_macros.h"
 #include "complex_macros.h"
+#include "conditional_scenarios.h"
 
 int GLOBAL_VAR = 42;
 int my_function(void) { return 1; }
