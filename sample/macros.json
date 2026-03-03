@@ -44,5 +44,22 @@
     "MATH_UNARY_PLUS": 50,
     "SIZE_COMPLEX": 17,
     "TEST_MACRO": 42,
-    "TEST_MACRO_2": 17
+    "TEST_MACRO_2": 17,
+    "_DEBUG": 1,
+    "_DLL": 1,
+    "_INTEGRAL_MAX_BITS": 64,
+    "_ISO_VOLATILE": 1,
+    "_MSC_BUILD": 1,
+    "_MSC_EXTENSIONS": 1,
+    "_MSC_FULL_VER": 194234433,
+    "_MSC_VER": 1942,
+    "_MSVC_CONSTEXPR_ATTRIBUTE": 1,
+    "_MSVC_EXECUTION_CHARACTER_SET": 65001,
+    "_MT": 1,
+    "_M_AMD64": 100,
+    "_M_FP_CONTRACT": 1,
+    "_M_FP_PRECISE": 1,
+    "_M_X64": 100,
+    "_WIN32": 1,
+    "_WIN64": 1
 }
