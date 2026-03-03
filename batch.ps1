@@ -1,9 +1,16 @@
 param(
     [string]$RepoDir = ".\sample",
-    [string]$Output = ".\macros_output.json",
+    [string]$Output = "",
+    [ValidateSet("json", "xml")]
+    [string]$OutputFormat = "json",
     [string]$Clang = "clang",
     [switch]$CompileFallback
 )
+
+# Default output filename depends on the chosen format
+if ($Output -eq "") {
+    $Output = ".\macros_output.$OutputFormat"
+}
 
 function Assert-Command {
     param([string]$CommandName, [string]$Context)
@@ -52,7 +59,7 @@ Write-Host "Found: $cmakeVersion" -ForegroundColor Green
 
 Write-Host "`nEnvironment checks passed. Running MacroInsight...`n" -ForegroundColor Cyan
 
-$pyArgs = @("main.py", "--repo-dir", $RepoDir, "--output", $Output, "--clang", $Clang)
+$pyArgs = @("main.py", "--repo-dir", $RepoDir, "--output", $Output, "--output-format", $OutputFormat, "--clang", $Clang)
 if ($CompileFallback) {
     $pyArgs += "--compile-fallback"
 }

@@ -1,0 +1,70 @@
+<?xml version="1.0" ?>
+<SourceInsightParseConditions AppVer="4.00.0089" AppVerMinReader="4.00.0019">
+  <ParseConditions>
+    <Defines>
+      <define id="BITWISE_CHAR" value="97"/>
+      <define id="CAST_CHAR" value="65"/>
+      <define id="CAST_INT" value="3"/>
+      <define id="CAST_PTR_TO_INT" value="305441741"/>
+      <define id="CHAR_A" value="65"/>
+      <define id="CHAR_HEX" value="65"/>
+      <define id="CHAR_NEWLINE" value="10"/>
+      <define id="COMBINED_CAST_SIZE" value="69"/>
+      <define id="COMPLEX_MACROS_H" value="1"/>
+      <define id="INVALID_MACROS_H" value="1"/>
+      <define id="INV_ARRAY" value=""/>
+      <define id="INV_FLOAT" value="3"/>
+      <define id="INV_FUNC" value=""/>
+      <define id="INV_GLOBAL" value=""/>
+      <define id="INV_PTR" value=""/>
+      <define id="INV_VAR_ADD" value=""/>
+      <define id="LOGIC_AND" value="1"/>
+      <define id="LOGIC_EQ" value="1"/>
+      <define id="LOGIC_GE" value="1"/>
+      <define id="LOGIC_GT" value="1"/>
+      <define id="LOGIC_LE" value="0"/>
+      <define id="LOGIC_LT" value="0"/>
+      <define id="LOGIC_MACROS_H" value="1"/>
+      <define id="LOGIC_NEQ" value="1"/>
+      <define id="LOGIC_NOT" value="0"/>
+      <define id="LOGIC_OR" value="1"/>
+      <define id="LOGIC_TERNARY" value="100"/>
+      <define id="LOGIC_TERNARY_NESTED" value="42"/>
+      <define id="MATH_ADD" value="30"/>
+      <define id="MATH_BIT_AND" value="15"/>
+      <define id="MATH_BIT_NOT" value="-16"/>
+      <define id="MATH_BIT_OR" value="255"/>
+      <define id="MATH_BIT_XOR" value="255"/>
+      <define id="MATH_DIV" value="33"/>
+      <define id="MATH_LSHIFT" value="16"/>
+      <define id="MATH_MACROS_H" value="1"/>
+      <define id="MATH_MOD" value="2"/>
+      <define id="MATH_MUL" value="42"/>
+      <define id="MATH_NESTED" value="480"/>
+      <define id="MATH_RSHIFT" value="8"/>
+      <define id="MATH_SUB" value="35"/>
+      <define id="MATH_UNARY_MINUS" value="-100"/>
+      <define id="MATH_UNARY_PLUS" value="50"/>
+      <define id="SIZE_COMPLEX" value="17"/>
+      <define id="TEST_MACRO" value="42"/>
+      <define id="TEST_MACRO_2" value="17"/>
+      <define id="_DEBUG" value="1"/>
+      <define id="_DLL" value="1"/>
+      <define id="_INTEGRAL_MAX_BITS" value="64"/>
+      <define id="_ISO_VOLATILE" value="1"/>
+      <define id="_MSC_BUILD" value="1"/>
+      <define id="_MSC_EXTENSIONS" value="1"/>
+      <define id="_MSC_FULL_VER" value="194234433"/>
+      <define id="_MSC_VER" value="1942"/>
+      <define id="_MSVC_CONSTEXPR_ATTRIBUTE" value="1"/>
+      <define id="_MSVC_EXECUTION_CHARACTER_SET" value="65001"/>
+      <define id="_MT" value="1"/>
+      <define id="_M_AMD64" value="100"/>
+      <define id="_M_FP_CONTRACT" value="1"/>
+      <define id="_M_FP_PRECISE" value="1"/>
+      <define id="_M_X64" value="100"/>
+      <define id="_WIN32" value="1"/>
+      <define id="_WIN64" value="1"/>
+    </Defines>
+  </ParseConditions>
+</SourceInsightParseConditions>

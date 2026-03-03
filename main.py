@@ -3,6 +3,8 @@ import argparse
 import json
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
 from pathlib import Path
 
 from core import process_file
@@ -45,13 +47,45 @@ def fallback_find_c_files(repo_dir, clang_exec="clang", compile_fallback=False):
     return commands
 
 
+def save_output(data: dict, output_file: str, fmt: str) -> None:
+    """Write *data* to *output_file* in the requested format (json or xml)."""
+    if fmt == "xml":
+        root = ET.Element("SourceInsightParseConditions", {
+            "AppVer": "4.00.0089",
+            "AppVerMinReader": "4.00.0019",
+        })
+        parse_conditions = ET.SubElement(root, "ParseConditions")
+        defines = ET.SubElement(parse_conditions, "Defines")
+        for key, value in data.items():
+            if isinstance(value, bool):
+                val_str = "1" if value else "0"
+            elif value is None:
+                val_str = ""
+            else:
+                val_str = str(value)
+            ET.SubElement(defines, "define", {"id": str(key), "value": val_str})
+        xml_bytes = ET.tostring(root, encoding="utf-8")
+        pretty_xml = minidom.parseString(xml_bytes).toprettyxml(indent="  ")
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(pretty_xml)
+    else:
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Extract compiler macro values by compiling a probe file and reading the ELF/COFF object."
     )
     parser.add_argument("--repo-dir", "-r", help="Repository directory containing source code",
                         default=".\\sample")
-    parser.add_argument("--output", "-o", help="Output JSON file", default=".\\macros_output.json")
+    parser.add_argument("--output", "-o", help="Output file path", default=None)
+    parser.add_argument(
+        "--output-format", "-f",
+        choices=["json", "xml"],
+        default="json",
+        help="Output format: json (default) or xml (Source Insight ParseConditions)",
+    )
     parser.add_argument("--clang", "-c",
                         help="Compiler executable to use (clang → llvm-objdump, armclang → fromelf)",
                         default="clang")
@@ -62,7 +96,10 @@ def main():
 
     repo_dir = os.path.abspath(args.repo_dir)
     build_dir = os.path.join(repo_dir, "build")
-    output_file = os.path.abspath(args.output)
+    output_fmt = args.output_format
+    ext = ".xml" if output_fmt == "xml" else ".json"
+    default_output = f".\\macros_output{ext}"
+    output_file = os.path.abspath(args.output if args.output is not None else default_output)
     clang_exec = args.clang
     compile_fallback = args.compile_fallback
 
@@ -127,11 +164,10 @@ def main():
 
     print(f"Processed {count} files.")
 
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(all_macros, f, indent=4)
+    save_output(all_macros, output_file, output_fmt)
 
     evaluable = sum(1 for v in all_macros.values() if v is not None)
-    print(f"Extracted {len(all_macros)} macros ({evaluable} with static values). Saved to {output_file}")
+    print(f"Extracted {len(all_macros)} macros ({evaluable} with static values). Saved to {output_file} [{output_fmt}]")
 
 
 if __name__ == "__main__":
