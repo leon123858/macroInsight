@@ -143,8 +143,6 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
         # Skip internal compiler macros
         if macro_name.startswith("__"):
             continue
-        if macro_name.startswith("_"):
-            continue
 
         # Skip already-known macros (avoid re-processing across source files)
         if macro_name in known_macros:

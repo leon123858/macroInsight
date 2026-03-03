@@ -144,6 +144,12 @@ def build_probe_compile_cmd(original_cmd: str,
     if "-O1" not in new_parts and "-O2" not in new_parts and "-O3" not in new_parts and "-Os" not in new_parts:
         # Insert after the first element (compiler) 
         new_parts.insert(1, "-O1")
+        
+    new_parts.insert(1, "-ferror-limit=0")
+    new_parts.insert(1, "-fno-diagnostics-show-option")
+    new_parts.insert(1, "-fno-caret-diagnostics")
+    new_parts.insert(1, "-Wno-everything")
+    new_parts.insert(1, "-w")
 
     return new_parts
 
@@ -210,13 +216,10 @@ def _remove_probes_at_lines(probe_c_path: str, error_lines: List[int]) -> Tuple[
 
     for err_line in error_lines:
         idx = err_line - 1  # 0-indexed
-        # Search in a small window around the error line
-        for scan_idx in range(max(0, idx - 2), min(len(lines), idx + 3)):
-            m = probe_name_pattern.search(lines[scan_idx])
-            if m:
-                removed_names.append(m.group(1))
-                lines_to_remove.add(scan_idx)
-                break
+        m = probe_name_pattern.search(lines[idx])
+        if m:
+            removed_names.append(m.group(1))
+            lines_to_remove.add(idx)
 
     if not lines_to_remove:
         return [], 0
@@ -332,6 +335,7 @@ def process_file(source_file: str,
         compile_cmd = build_probe_compile_cmd(
             original_cmd, source_file, probe_c_path, probe_obj_path, directory
         )
+        
         if compile_cmd is None:
             print(f"[core] Could not build compile command for {source_file}", file=sys.stderr)
             return None
@@ -350,7 +354,7 @@ def process_file(source_file: str,
         # Mark removed macros as None (they exist but are not statically evaluable)
         for name in removed_macro_names:
             macros[name] = None
-
+        
         # ── Self-verification ──────────────────────────────────────────────
         # Every name that inject_probes wrote into probe.c should appear in the
         # returned dict (either as an integer value, or as None if it was removed

@@ -45,7 +45,7 @@ def read_probe_values(obj_path: str,
         raw = _read_with_fromelf(obj_path, compiler_exec)
     else:
         raw = _read_with_llvm_objdump(obj_path, compiler_exec)
-
+    
     if raw is None:
         print(f"[elf_reader] WARNING: Could not read {obj_path}", file=sys.stderr)
         return {name: None for name in probe_names}
@@ -267,35 +267,9 @@ def _find_fromelf(compiler_exec: str) -> str:
 
 def _read_with_fromelf(obj_path: str, compiler_exec: str) -> Optional[Dict[str, int]]:
     """
-    Use `fromelf --text -s` to read the symbol table, then `--text -d` for
-    a data section dump, and extract PROBE_ values.
+    use fromelf dump raw data ib object file
     """
     fromelf = _find_fromelf(compiler_exec)
-
-    # Symbol table
-    sym_cmd = [fromelf, "--text", "-s", obj_path]
-    try:
-        sym_result = subprocess.run(sym_cmd, capture_output=True, text=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"[elf_reader] fromelf failed: {e}", file=sys.stderr)
-        return None
-
-    # Parse fromelf symbol table — format varies, look for PROBE_ entries
-    # Typical line: "   PROBE_MYMACRO    0x00000000   Data   8   .data"
-    symbols: Dict[str, dict] = {}
-    for line in sym_result.stdout.splitlines():
-        m = re.search(r'(PROBE_[A-Za-z0-9_]+)\s+(0x[0-9a-fA-F]+)\s+\S+\s+(\d+)\s+(\S+)', line)
-        if m:
-            symbols[m.group(1)] = {
-                "offset": int(m.group(2), 16),
-                "size": int(m.group(3)),
-                "section": m.group(4),
-            }
-
-    if not symbols:
-        print("[elf_reader] fromelf: No PROBE_ symbols found.", file=sys.stderr)
-        return {}
-
     # Data dump
     dump_cmd = [fromelf, "--text", "-d", obj_path]
     try:
@@ -305,28 +279,15 @@ def _read_with_fromelf(obj_path: str, compiler_exec: str) -> Optional[Dict[str, 
         return None
 
     section_bytes = _parse_fromelf_dump(dump_result.stdout)
-
+    
     result: Dict[str, int] = {}
-    for sym_name, info in symbols.items():
-        section = info.get("section")
-        offset = info.get("offset", 0)
-        data = section_bytes.get(section) if section else None
-        if data is None:
-            for sec_data_key, sec_data_val in section_bytes.items():
-                data = sec_data_val
-                break  # take first available section as fallback
-
-        if data is None:
+    for section_name, r_data in section_bytes.items():
+        value = int.from_bytes(r_data, byteorder='little')
+        strs  = section_name.split(".")
+        if len(strs) < 3:
             continue
-        try:
-            raw_bytes = data[offset: offset + 8]
-            if len(raw_bytes) < 8:
-                continue
-            # ARM targets are typically little-endian; adjust if big-endian needed
-            value = struct.unpack_from("<q", raw_bytes)[0]
-            result[sym_name] = value
-        except Exception as ex:
-            print(f"[elf_reader] fromelf: Error extracting {sym_name}: {ex}", file=sys.stderr)
+        if strs[1] == "rodata" and strs[2].startswith("PROBE_"):
+            result[strs[2]] = value
 
     return result
 
@@ -340,22 +301,19 @@ def _parse_fromelf_dump(text: str) -> Dict[str, bytearray]:
     for line in text.splitlines():
         sec_m = re.match(r'\*\*\s+Section\s+#\d+\s+\'([^\']+)\'', line)
         if sec_m:
-            if current_section and current_data is not None:
-                section_bytes[current_section] = current_data
             current_section = sec_m.group(1)
             current_data = bytearray()
             continue
 
-        if current_data is not None:
-            data_m = re.match(r'\s*[0-9a-fA-F]+:\s+((?:[0-9a-fA-F]{2}\s+)+)', line)
+        if current_section is not None:
+            data_m = re.search(r"0x[0-9a-fA-F]+:\s*((?:[0-9a-fA-F]{2}\s*)+)", line)
             if data_m:
                 for byte_str in data_m.group(1).split():
                     try:
                         current_data.append(int(byte_str, 16))
                     except ValueError:
                         pass
-
-    if current_section and current_data is not None:
-        section_bytes[current_section] = current_data
-
+                section_bytes[current_section] = current_data
+                current_section = None
+                
     return section_bytes
