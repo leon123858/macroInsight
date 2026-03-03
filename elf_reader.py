@@ -45,7 +45,7 @@ def read_probe_values(obj_path: str,
         raw = _read_with_fromelf(obj_path, compiler_exec)
     else:
         raw = _read_with_llvm_objdump(obj_path, compiler_exec)
-    
+
     if raw is None:
         print(f"[elf_reader] WARNING: Could not read {obj_path}", file=sys.stderr)
         return {name: None for name in probe_names}
@@ -123,13 +123,6 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
         return {}
 
     # ── Step 2: hex dump ────────────────────────────────────────────────────
-    # Collect section names referenced by PROBE_ symbols
-    sections_needed = {info["section"] for info in symbols.values() if info.get("section")}
-
-    # Always try a set of likely section names for data/rodata
-    default_sections = [".data", ".rodata", ".data.rel.ro", ".rdata", ".rodata.cst8"]
-    sections_to_dump = list(sections_needed | set(default_sections))
-
     hex_cmd = [objdump, "-s", obj_path]
     try:
         hex_result = subprocess.run(hex_cmd, capture_output=True, text=True, check=True)
@@ -139,6 +132,27 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
 
     section_bytes = _parse_hex_dump(hex_result.stdout)
 
+    section_convert_cmd = [objdump, "-h", obj_path]
+    try:
+        section_convert_result = subprocess.run(section_convert_cmd, capture_output=True, text=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"[elf_reader] llvm-objdump -h failed: {e}", file=sys.stderr)
+        return None
+    
+    # print(section_convert_result.stdout)
+    # Sections:
+    # Idx Name          Size     VMA              Type
+    #   0 .text         00005e7c 0000000000000000 TEXT
+    #   1 .data         00000018 0000000000000000 DATA
+    pattern = r"^\s*(\d+)\s+([\.\w]+)"
+    matches = re.findall(pattern, section_convert_result.stdout, re.MULTILINE)
+    section_map = {}
+    for idx, name in matches:
+        if name not in section_map:
+            section_map[name] = [f"sec{int(idx)+1}"]
+        else:
+            section_map[name].append(f"sec{int(idx)+1}")
+
     # ── Step 3: extract values ──────────────────────────────────────────────
     result: Dict[str, int] = {}
     for sym_name, info in symbols.items():
@@ -146,25 +160,31 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
         offset = info.get("offset")
         if section is None or offset is None:
             continue
-
-        data = section_bytes.get(section)
-        if data is None:
-            # Try known aliases
-            for alt in [".rdata", ".rodata", ".data.rel.ro"]:
-                data = section_bytes.get(alt)
-                if data:
+        
+        keys = list(section_map.keys())
+        targetIdx = (-1, -1)
+        for i in range(0, len(keys)):
+            for j in range(0, len(section_map.get(keys[i]))):
+                if section_map.get(keys[i])[j] == section:
+                    targetIdx = (i, j)
                     break
-
-        if data is None:
-            print(f"[elf_reader] Section '{section}' not found in hex dump.", file=sys.stderr)
-            continue
+        if targetIdx == (-1, -1):
+            assert False, f"Section '{section}' not found in hex dump."
+        section_name, section_name_cnt = targetIdx
+        data = section_bytes[keys[section_name]][section_name_cnt]
+        assert data is not None, f"Section '{section}' not found in hex dump."
+        # for i in range(0, len(data), 16):
+        #     _chunk = data[i:i+16]
+        #     _offset = f"{i:08x}"
+        #     _hex_values = " ".join(f"{b:02x}" for b in _chunk)
+        #     _hex_values = _hex_values.ljust(16 * 3)
+        #     _ascii_values = "".join(chr(b) if 32 <= b <= 126 else "." for b in _chunk)
+        #     print(f"{_offset}  {_hex_values}  |{_ascii_values}|")
 
         try:
             raw_bytes = data[offset: offset + 8]
-            if len(raw_bytes) < 8:
-                print(f"[elf_reader] Not enough bytes for {sym_name} at offset {offset:#x}", file=sys.stderr)
-                continue
-            value = struct.unpack_from("<q", raw_bytes)[0]   # little-endian int64
+            assert len(raw_bytes) == 8, f"Not enough bytes for {sym_name} at offset {offset:#x}"
+            value = int.from_bytes(raw_bytes, byteorder='little', signed=True)
             result[sym_name] = value
         except Exception as ex:
             print(f"[elf_reader] Error extracting {sym_name}: {ex}", file=sys.stderr)
@@ -208,7 +228,7 @@ def _parse_symbol_line(line: str, sym_name: str, symbols: dict):
     symbols.setdefault(sym_name, {})
 
 
-def _parse_hex_dump(text: str) -> Dict[str, bytearray]:
+def _parse_hex_dump(text: str) -> Dict[str, List[bytearray]]:
     """
     Parse the output of `llvm-objdump -s` into a dict of section_name → bytes.
 
@@ -216,33 +236,41 @@ def _parse_hex_dump(text: str) -> Dict[str, bytearray]:
       Contents of section .rodata:
        0000 01000000 000000xx ...    <ascii>
     """
-    section_bytes: Dict[str, bytearray] = {}
+    section_bytes: Dict[str, List[bytearray]] = {}
     current_section: Optional[str] = None
     current_data: Optional[bytearray] = None
-
     for line in text.splitlines():
         # Section header
         hdr = re.match(r"Contents of section ([^:]+):", line)
         if hdr:
             if current_section is not None and current_data is not None:
-                section_bytes[current_section] = current_data
+                if current_section in section_bytes:
+                    section_bytes[current_section].append(current_data)
+                else:
+                    section_bytes[current_section] = [current_data]
             current_section = hdr.group(1).strip()
             current_data = bytearray()
             continue
 
         # Hex data line: " <offset_hex> <hex_pairs...>  <ascii>"
-        if current_data is not None:
-            data_m = re.match(r'\s+[0-9a-fA-F]+\s+((?:[0-9a-fA-F]{2,8}\s+)+)', line)
+        if current_section is not None:
+            data_m = re.match(r'\s+[0-9a-fA-F]+\s+((?:[0-9a-fA-F]{8}\s+)+)', line)
             if data_m:
                 hex_part = data_m.group(1)
+                # print("$$$", hex_part)
                 for chunk in hex_part.split():
+                    if len(chunk) % 2 != 0:
+                        chunk = chunk + '0'
                     try:
                         current_data += bytes.fromhex(chunk)
                     except ValueError:
-                        pass
+                        assert False, f"Invalid hex chunk: {chunk}"
 
     if current_section is not None and current_data is not None:
-        section_bytes[current_section] = current_data
+        if current_section in section_bytes:
+            section_bytes[current_section].append(current_data)
+        else:
+            section_bytes[current_section] = [current_data]
 
     return section_bytes
 
