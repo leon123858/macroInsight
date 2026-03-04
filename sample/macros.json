@@ -15,5 +15,7 @@
     "PLATFORM_LINUX": 1,
     "RETRY_COUNT": 3,
     "TIMEOUT_MS": 500,
-    "VERSION_MAJOR": 3
+    "VERSION_MAJOR": 3,
+    "_MSC_VER": 1942,
+    "_WIN32": 1
 }

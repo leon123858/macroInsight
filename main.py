@@ -108,6 +108,11 @@ def main():
         default=None,
         help="Number of concurrent threads to use for parsing (default: automatic based on CPU cores)",
     )
+    parser.add_argument(
+        "--file-list",
+        help="Output compilation target file paths to a text file (each enclosed in quotes)",
+        default=None,
+    )
 
     args = parser.parse_args()
 
@@ -144,6 +149,21 @@ def main():
         except Exception as e:
             print(f"Error reading compile_commands.json: {e}", file=sys.stderr)
             sys.exit(1)
+
+    if args.file_list:
+        try:
+            with open(args.file_list, "w", encoding="utf-8") as fl:
+                for cmd in commands:
+                    fpath = cmd.get("file", "")
+                    if fpath:
+                        directory = cmd.get("directory", repo_dir)
+                        if not os.path.isabs(fpath):
+                            fpath = os.path.join(directory, fpath)
+                        fpath = os.path.abspath(fpath)
+                        fl.write(f'"{fpath}"\n')
+            print(f"File list saved to {args.file_list}")
+        except Exception as e:
+            print(f"Error writing file list to {args.file_list}: {e}", file=sys.stderr)
 
     all_macros = {}
     count = 0

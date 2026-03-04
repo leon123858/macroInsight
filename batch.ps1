@@ -6,7 +6,8 @@ param(
     [ValidateSet("clang", "armclang")]
     [string]$Clang = "clang",
     [switch]$CompileFallback,
-    [string]$CProjectConfig = ""
+    [string]$CProjectConfig = "",
+    [string]$FileList = ""
 )
 
 # Default output filename depends on the chosen format
@@ -103,6 +104,9 @@ if (-not (Test-Path $cmakeListsPath) -and ($CProjectConfig -ne "")) {
 $pyArgs = @("main.py", "--repo-dir", $RepoDir, "--output", $Output, "--output-format", $OutputFormat, "--clang", $Clang)
 if ($CompileFallback) {
     $pyArgs += "--compile-fallback"
+}
+if ($FileList -ne "") {
+    $pyArgs += @("--file-list", $FileList)
 }
 $fullCmd = $pythonExec + $pyArgs
 

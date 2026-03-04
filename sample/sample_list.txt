@@ -1,0 +1,2 @@
+"C:\Users\a0970\Desktop\macroInsight\sample\src_fw\main.c"
+"C:\Users\a0970\Desktop\macroInsight\sample\src_fw\utils.c"
