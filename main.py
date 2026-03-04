@@ -101,6 +101,12 @@ def main():
         help="Disable the conditional-macro filter; include ALL evaluated macros in output "
              "(by default only macros referenced in #if/#ifdef/#ifndef/#elif/etc. are kept)",
     )
+    parser.add_argument(
+        "--jobs", "-j",
+        type=int,
+        default=None,
+        help="Number of concurrent threads to use for parsing (default: automatic based on CPU cores)",
+    )
 
     args = parser.parse_args()
 
@@ -141,10 +147,15 @@ def main():
     all_macros = {}
     count = 0
 
-    for cmd in commands:
+    import threading
+    import concurrent.futures
+
+    all_macros_lock = threading.Lock()
+
+    def worker(cmd):
         file_path = cmd.get("file", "")
         if not file_path.endswith((".c", ".cpp", ".cxx", ".cc")):
-            continue
+            return None
 
         directory = cmd.get("directory", repo_dir)
         if not os.path.isabs(file_path):
@@ -159,7 +170,7 @@ def main():
             original_cmd = shlex.join(cmd["arguments"])
         else:
             print(f"Warning: no command/arguments for {file_path}, skipping.", file=sys.stderr)
-            continue
+            return None
 
         macros = process_file(
             source_file=file_path,
@@ -168,9 +179,21 @@ def main():
             known_macros=all_macros,
             clang_exec=clang_exec,
         )
-        if macros:
-            all_macros.update(macros)
-        count += 1
+        return macros
+
+    print(f"Starting parallel processing with {'automatic' if args.jobs is None else args.jobs} workers...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        futures = {executor.submit(worker, cmd): cmd for cmd in commands}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                macros = future.result()
+                if macros is not None:
+                    with all_macros_lock:
+                        if macros:
+                            all_macros.update(macros)
+                        count += 1
+            except Exception as e:
+                print(f"Error processing file: {e}", file=sys.stderr)
 
     print(f"Processed {count} files.")
 

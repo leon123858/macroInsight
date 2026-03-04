@@ -308,7 +308,9 @@ def process_file(source_file: str,
     # Collect -D macro definitions from command line
     cmdline_macros = _extract_cmdline_macros(preprocessor_flags)
 
-    probe_c_path = f"{base}.probe{ext}"
+    import threading
+    thread_id = threading.get_native_id() if hasattr(threading, 'get_native_id') else threading.get_ident()
+    probe_c_path = f"{base}.probe.{thread_id}{ext}"
     # Use a fixed-name .obj in a temp dir to avoid cluttering the build dir
     probe_obj_path = probe_c_path.replace(ext, ".obj")
 
