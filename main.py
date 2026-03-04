@@ -89,6 +89,7 @@ def main():
         help="Output format: json (default) or xml (Source Insight ParseConditions)",
     )
     parser.add_argument("--clang", "-c",
+                        choices=["clang", "armclang"],
                         help="Compiler executable to use (clang → llvm-objdump, armclang → fromelf)",
                         default="clang")
     parser.add_argument("--compile-fallback", action="store_true",

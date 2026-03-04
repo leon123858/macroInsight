@@ -3,6 +3,7 @@ param(
     [string]$Output = "",
     [ValidateSet("json", "xml")]
     [string]$OutputFormat = "json",
+    [ValidateSet("clang", "armclang")]
     [string]$Clang = "clang",
     [switch]$CompileFallback,
     [string]$CProjectConfig = ""
