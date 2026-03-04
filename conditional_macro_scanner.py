@@ -74,7 +74,8 @@ _DIRECTIVE_RE = re.compile(
     r"""
     ^[ \t]*                                    # optional leading whitespace
     \#[ \t]*                                   # hash, optional spaces
-    (if|ifdef|ifndef|elif|elifdef|elifndef)    # directive keyword
+    # (if|ifdef|ifndef|elif|elifdef|elifndef)  # directive keyword
+    (if|ifdef|elif|elifdef)                    # only catch this because source insight is poor with other conditions
     \b                                         # word boundary
     (.*)                                       # rest of line (the expression / identifier)
     """,
