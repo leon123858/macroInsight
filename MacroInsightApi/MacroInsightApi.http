@@ -1,0 +1,6 @@
+@MacroInsightApi_HostAddress = http://localhost:5298
+
+GET {{MacroInsightApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
