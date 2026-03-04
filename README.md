@@ -8,12 +8,11 @@ Source Insight is a powerful IDE, but to correctly process conditional compilati
 Furthermore, simply adding probe variables to print all macros requires compiling and linking the code. Exposing thousands of variables will easily exceed memory constraints and cause linker code-space errors in embedded systems.
 
 ## The Solution
-This tool automates the extraction of macro values directly from the codebase without touching the linking phase. It leverages Clang's `-fsyntax-only` AST dumping capabilities to extract the values of macros, which can then be fed into Source Insight.
+This tool automatically extracts macro values directly from the codebase, bypassing the linking phase.
 
-1. **Injection**: `macro_extractor.py` parses a given `.c`/`.cpp` file and injects `long long PROBE_NAME = ...` for every macro.
-   It uses `__builtin_choose_expr(__builtin_constant_p(MACRO), (long long)(MACRO), -9999LL)` so that non-constant macros explicitly fallback to `-9999` without producing compile errors.
-2. **Parser**: `ast_parser.py` calls Clang with `-fsyntax-only`, meaning Clang just validates the syntax and generates the Abstract Syntax Tree (AST), but skips Code Generation and Linking entirely! It inherently solves any space/linker restrictions.
-3. It directly evaluates the JSON AST branch outputs (handling constant binary math, unary operators, bits shifts, etc.).
+It uses -dM to retrieve the macros from the file, then compiles a new file that includes a probe generated from those macros.
+
+Finally, it dumps the updated macro values into the previously compiled object file.
 
 ## Usage
 
