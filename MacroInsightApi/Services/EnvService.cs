@@ -1,30 +1,26 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Python.Runtime;
 
 namespace MacroInsightApi.Services;
 
 public class EnvService
 {
-    public PythonStatus CheckPython()
+    private bool _pythonInitialized = false;
+
+    public async Task InitializePythonEngineAsync()
     {
-        // Check for uv first
-        var uvVersion = RunCommand("uv", "run python --version");
-        if (uvVersion != null)
-        {
-            return new PythonStatus(true, "uv", uvVersion.Trim(), null);
-        }
+        if (_pythonInitialized) return;
 
-        // Fallback to python
-        var pythonVersion = RunCommand("python", "--version");
-        if (pythonVersion != null)
-        {
-            return new PythonStatus(true, "python", pythonVersion.Trim(), null);
-        }
-
-        return new PythonStatus(false, null, null, 
-            "Python is required but not found. We recommend installing 'uv' (https://github.com/astral-sh/uv) or standard Python 3.10+ from https://www.python.org/downloads/. Please ensure it is added to your system PATH.");
+        // Python.Included Setup
+        await Python.Included.Installer.SetupPython();
+        
+        PythonEngine.Initialize();
+        
+        _pythonInitialized = true;
     }
+
 
     public CmakeStatus CheckCmake()
     {
@@ -41,10 +37,11 @@ public class EnvService
     {
         var results = new List<CompilerInfo>();
 
-        // For now, specifically looking for LLVM on Windows.
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        
+        // Scan for LLVM
         var llvmDir = Path.Combine(programFiles, "LLVM");
-
         if (Directory.Exists(llvmDir))
         {
             var binDir = Path.Combine(llvmDir, "bin");
@@ -56,11 +53,38 @@ public class EnvService
             }
         }
 
+        // Scan for DS-5
+        var ds5Dirs = new List<string>();
+        if (Directory.Exists(programFiles))
+        {
+            ds5Dirs.AddRange(Directory.GetDirectories(programFiles, "DS-5*"));
+        }
+        if (Directory.Exists(programFilesX86))
+        {
+            ds5Dirs.AddRange(Directory.GetDirectories(programFilesX86, "DS-5*"));
+        }
+
+        foreach (var dsDir in ds5Dirs)
+        {
+            var binDir = Path.Combine(dsDir, "bin");
+            if (Directory.Exists(binDir))
+            {
+                var ds5Name = new DirectoryInfo(dsDir).Name;
+                if (File.Exists(Path.Combine(binDir, "armclang.exe")))
+                {
+                    results.Add(new CompilerInfo(ds5Name, $"{ds5Name} (armclang)", binDir));
+                }
+                else if (File.Exists(Path.Combine(binDir, "armcc.exe")))
+                {
+                    results.Add(new CompilerInfo(ds5Name, $"{ds5Name} (armcc)", binDir));
+                }
+            }
+        }
+
         // If 'clang' is just in PATH, we add it too, checking if it differs.
         var systemClang = RunCommand("clang", "--version");
         if (systemClang != null)
         {
-            // We just add a reference to "System PATH LLVM". If the user wants to use whatever is globally installed.
             var firstLine = systemClang.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "System Clang";
             results.Add(new CompilerInfo("System PATH Compiler", firstLine, ""));
         }
@@ -77,6 +101,17 @@ public class EnvService
         {
             var newPath = $"{binPath};{pathEnv}";
             Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.Process);
+
+            // Dynamically set ARM_PRODUCT_PATH for DS-5 installations
+            if (binPath.Contains("DS-5", StringComparison.OrdinalIgnoreCase))
+            {
+                var ds5Home = Directory.GetParent(binPath)?.FullName;
+                if (!string.IsNullOrEmpty(ds5Home))
+                {
+                    var mappingsPath = Path.Combine(ds5Home, "sw", "mappings");
+                    Environment.SetEnvironmentVariable("ARM_PRODUCT_PATH", mappingsPath, EnvironmentVariableTarget.Process);
+                }
+            }
         }
         
         return true; // Simple success
@@ -116,6 +151,6 @@ public class EnvService
     }
 }
 
-public record PythonStatus(bool Available, string? Executable, string? Version, string? InstallationGuide);
+
 public record CmakeStatus(bool Available, string? Version);
 public record CompilerInfo(string Name, string VersionInfo, string BinPath);

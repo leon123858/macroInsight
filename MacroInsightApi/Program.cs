@@ -16,7 +16,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.MapGet("/api/env/python", (EnvService env) => Results.Ok(env.CheckPython()));
+// Initialize Python Engine Async during startup
+using (var scope = app.Services.CreateScope())
+{
+    var envService = scope.ServiceProvider.GetRequiredService<EnvService>();
+    await envService.InitializePythonEngineAsync();
+}
 
 app.MapGet("/api/env/cmake", (EnvService env) => Results.Ok(env.CheckCmake()));
 

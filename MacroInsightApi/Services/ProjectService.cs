@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Python.Runtime;
 
 namespace MacroInsightApi.Services;
 
@@ -18,6 +19,87 @@ public class ProjectService
         return File.Exists(cprojPath);
     }
 
+    private string RunPythonScript(string scriptPath, string targetDirectory, string[] args)
+    {
+        using (Py.GIL())
+        {
+            dynamic sys = Py.Import("sys");
+            dynamic io = Py.Import("io");
+            dynamic os = Py.Import("os");
+            
+            var originalArgv = sys.argv;
+            var oldStdout = sys.stdout;
+            var oldStderr = sys.stderr;
+            var oldDir = os.getcwd();
+
+            dynamic stdoutString = io.StringIO();
+            dynamic stderrString = io.StringIO();
+
+            try
+            {
+                var scriptName = Path.GetFileName(scriptPath);
+                var fullArgs = new List<string> { scriptName };
+                fullArgs.AddRange(args);
+                
+                sys.argv = fullArgs.ToArray();
+                sys.stdout = stdoutString; // Redirect stdout
+                sys.stderr = stderrString; // Redirect stderr
+                os.chdir(targetDirectory);
+
+                using (var scope = Py.CreateScope())
+                {
+                    scope.Set("__name__", "__main__");
+                    // Add the script's directory to sys.path so it can import local modules
+                    var scriptDir = Path.GetDirectoryName(scriptPath);
+                    if (scriptDir != null) sys.path.insert(0, scriptDir);
+                    
+                    try
+                    {
+                        scope.Exec(File.ReadAllText(scriptPath));
+                    }
+                    finally
+                    {
+                        if (scriptDir != null) sys.path.pop(0);
+                    }
+                }
+
+                return (string)stdoutString.getvalue();
+            }
+            catch (PythonException ex)
+            {
+                dynamic excType = sys.exc_info()[0];
+                if (excType != null && (string)excType.__name__ == "SystemExit")
+                {
+                    dynamic excValue = sys.exc_info()[1];
+                    try 
+                    {
+                        PyObject codeObj = excValue.code;
+                        if (codeObj.IsNone()) 
+                        {
+                            return (string)stdoutString.getvalue();
+                        }
+                        else if (codeObj.HasAttr("__int__") && codeObj.As<int>() == 0) 
+                        {
+                            return (string)stdoutString.getvalue();
+                        }
+                    } 
+                    catch { }
+                }
+
+                var stderr = (string)stderrString.getvalue();
+                var stdout = (string)stdoutString.getvalue();
+                throw new Exception($"Python execution failed.\nError: {ex.Message}\nStdout: {stdout}\nStderr: {stderr}");
+            }
+            finally
+            {
+                sys.argv = originalArgv;
+                sys.stdout = oldStdout;
+                sys.stderr = oldStderr;
+                os.chdir(oldDir);
+            }
+        }
+    }
+
     public List<string> ListConfigs(string targetDirectory)
     {
         var cprojPath = Path.Combine(targetDirectory, ".cproject");
@@ -29,28 +111,7 @@ public class ProjectService
             cprojectToCmakePath = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "cproject_to_cmake.py"));
         }
 
-        var pyStatus = _envService.CheckPython();
-        if (!pyStatus.Available) throw new Exception("Python is not available.");
-
-        string fileName;
-        string argsPrefix;
-
-        if (pyStatus.Executable == "uv")
-        {
-            fileName = "uv";
-            argsPrefix = $"run python \"{cprojectToCmakePath}\"";
-        }
-        else
-        {
-            fileName = "python";
-            argsPrefix = $"\"{cprojectToCmakePath}\"";
-        }
-
-        var arguments = $"{argsPrefix} --cproject \"{cprojPath}\" --list-configs";
-
-        var (exitCode, stdout, stderr) = RunCommandWithOutput(fileName, arguments, targetDirectory);
-        
-        if (exitCode != 0) throw new Exception($"Failed to list configs: {stderr}");
+        var stdout = RunPythonScript(cprojectToCmakePath, targetDirectory, new[] { "--cproject", cprojPath, "--list-configs" });
 
         var lines = stdout.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         var configs = new List<string>();
@@ -74,28 +135,19 @@ public class ProjectService
         var templatePath = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "cmake_template.txt"));
         var mainPyPath = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", "main.py"));
 
-        var pyStatus = _envService.CheckPython();
-        if (!pyStatus.Available) throw new Exception("Python is not available.");
-
-        string fileName = pyStatus.Executable == "uv" ? "uv" : "python";
-        string argsPrefix = pyStatus.Executable == "uv" ? "run python" : "";
-
         // 1. Generate CMakeLists.txt if not exists
         if (!File.Exists(cmakeListsPath) && File.Exists(cprojPath))
         {
-            var args = $"{argsPrefix} \"{cprojectToCmakePath}\" --cproject \"{cprojPath}\" --template \"{templatePath}\" --output \"{cmakeListsPath}\" --config \"{configName}\"";
-            var (genExit, genOut, genErr) = RunCommandWithOutput(fileName, args.Trim(), targetDirectory);
-            if (genExit != 0) throw new Exception($"cproject_to_cmake.py failed: {genErr}");
+            var args = new[] { "--cproject", cprojPath, "--template", templatePath, "--output", cmakeListsPath, "--config", configName };
+            RunPythonScript(cprojectToCmakePath, targetDirectory, args);
         }
 
         // 2. Run MacroInsight main.py
         var outXmlName = $"{configName}.conditions.xml";
         var outXmlPath = Path.Combine(targetDirectory, outXmlName);
 
-        var runArgs = $"{argsPrefix} \"{mainPyPath}\" --repo-dir \"{targetDirectory}\" --output \"{outXmlPath}\" --output-format xml --clang clang".Trim();
-        var (runExit, runOut, runErr) = RunCommandWithOutput(fileName, runArgs, targetDirectory);
-
-        if (runExit != 0) throw new Exception($"MacroInsight execution failed: {runErr}\n{runOut}");
+        var runArgs = new[] { "--repo-dir", targetDirectory, "--output", outXmlPath, "--output-format", "xml", "--clang", "clang" };
+        RunPythonScript(mainPyPath, targetDirectory, runArgs);
 
         if (!File.Exists(outXmlPath)) throw new Exception($"Expected output file not found: {outXmlPath}");
 
@@ -127,25 +179,5 @@ public class ProjectService
         {
             if (Directory.Exists(folder)) Directory.Delete(folder, true);
         }
-    }
-
-    private (int exitCode, string stdout, string stderr) RunCommandWithOutput(string fileName, string arguments, string workingDir)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            WorkingDirectory = workingDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using var process = Process.Start(startInfo);
-        if (process == null) return (-1, "", "Failed to start process.");
-
-        process.WaitForExit();
-        return (process.ExitCode, process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
     }
 }
