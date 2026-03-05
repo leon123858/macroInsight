@@ -11,6 +11,19 @@ from core import process_file
 from conditional_macro_scanner import collect_conditional_macros
 
 
+def load_env_config():
+    """Load environment variables from local configuration files to temporarily override."""
+    config_files = ["env.json"]
+    if os.path.exists(config_file):
+        print(f"Loading environment variables from {config_file}")
+        try:
+            with open(config_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for k, v in data.items():
+                    os.environ[k] = str(v)
+        except Exception as e:
+            print(f"Error loading {config_file}: {e}", file=sys.stderr)
+         
 def generate_compile_commands(repo_dir, build_dir):
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
     if not os.path.exists(compile_commands_path):
@@ -76,6 +89,7 @@ def save_output(data: dict, output_file: str, fmt: str) -> None:
 
 
 def main():
+    load_env_config()
     parser = argparse.ArgumentParser(
         description="Extract compiler macro values by compiling a probe file and reading the ELF/COFF object."
     )
