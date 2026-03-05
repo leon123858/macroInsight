@@ -13,7 +13,7 @@ from conditional_macro_scanner import collect_conditional_macros
 
 def load_env_config():
     """Load environment variables from local configuration files to temporarily override."""
-    config_files = "env.json"
+    config_file = "env.json"
     if os.path.exists(config_file):
         print(f"Loading environment variables from {config_file}")
         try:
