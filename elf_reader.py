@@ -14,6 +14,7 @@ import re
 import struct
 import subprocess
 import sys
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -47,7 +48,7 @@ def read_probe_values(obj_path: str,
         raw = _read_with_llvm_objdump(obj_path, compiler_exec)
 
     if raw is None:
-        print(f"[elf_reader] WARNING: Could not read {obj_path}", file=sys.stderr)
+        logging.getLogger("elf_reader").warning(f"Could not read {obj_path}")
         return {name: None for name in probe_names}
 
     result: Dict[str, Optional[int]] = {}
@@ -103,7 +104,7 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
     try:
         sym_result = subprocess.run(sym_cmd, capture_output=True, text=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"[elf_reader] llvm-objdump -t failed: {e}", file=sys.stderr)
+        logging.getLogger("elf_reader").error(f"llvm-objdump -t failed: {e}")
         return None
 
     # Parse ELF symbol table lines. Two common formats:
@@ -119,7 +120,7 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
         _parse_symbol_line(line, sym_name, symbols)
 
     if not symbols:
-        print("[elf_reader] No PROBE_ symbols found in symbol table.", file=sys.stderr)
+        logging.getLogger("elf_reader").warning("No PROBE_ symbols found in symbol table.")
         return {}
 
     # ── Step 2: hex dump ────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
     try:
         hex_result = subprocess.run(hex_cmd, capture_output=True, text=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"[elf_reader] llvm-objdump -s failed: {e}", file=sys.stderr)
+        logging.getLogger("elf_reader").error(f"llvm-objdump -s failed: {e}")
         return None
 
     section_bytes = _parse_hex_dump(hex_result.stdout)
@@ -136,7 +137,7 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
     try:
         section_convert_result = subprocess.run(section_convert_cmd, capture_output=True, text=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"[elf_reader] llvm-objdump -h failed: {e}", file=sys.stderr)
+        logging.getLogger("elf_reader").error(f"llvm-objdump -h failed: {e}")
         return None
     
     # print(section_convert_result.stdout)
@@ -187,7 +188,7 @@ def _read_with_llvm_objdump(obj_path: str, compiler_exec: str) -> Optional[Dict[
             value = int.from_bytes(raw_bytes, byteorder='little', signed=True)
             result[sym_name] = value
         except Exception as ex:
-            print(f"[elf_reader] Error extracting {sym_name}: {ex}", file=sys.stderr)
+            logging.getLogger("elf_reader").error(f"Error extracting {sym_name}: {ex}")
 
     return result
 
@@ -303,7 +304,7 @@ def _read_with_fromelf(obj_path: str, compiler_exec: str) -> Optional[Dict[str, 
     try:
         dump_result = subprocess.run(dump_cmd, capture_output=True, text=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"[elf_reader] fromelf --text -d failed: {e}", file=sys.stderr)
+        logging.getLogger("elf_reader").error(f"fromelf --text -d failed: {e}")
         return None
 
     section_bytes = _parse_fromelf_dump(dump_result.stdout)

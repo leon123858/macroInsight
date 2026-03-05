@@ -15,6 +15,7 @@ import sys
 import subprocess
 import shlex
 import tempfile
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -47,7 +48,7 @@ def build_probe_compile_cmd(original_cmd: str,
     try:
         parts = shlex.split(original_cmd)
     except ValueError as e:
-        print(f"[core] shlex failed: {e}", file=sys.stderr)
+        logging.getLogger("core").error(f"shlex failed: {e}")
         parts = original_cmd.split()
 
     # Expand @response files in-place
@@ -169,10 +170,10 @@ def _expand_response_files(parts: List[str], directory: str) -> List[str]:
                     rsp_args = shlex.split(rsp_content)
                     expanded.extend(_expand_response_files(rsp_args, directory))
                 except Exception as e:
-                    print(f"[core] Warning: Could not read response file {rsp_path}: {e}", file=sys.stderr)
+                    logging.getLogger("core").warning(f"Could not read response file {rsp_path}: {e}")
                     expanded.append(part)
             else:
-                print(f"[core] Warning: Response file not found: {rsp_path}", file=sys.stderr)
+                logging.getLogger("core").warning(f"Response file not found: {rsp_path}")
                 expanded.append(part)
         else:
             expanded.append(part)
@@ -244,7 +245,7 @@ def compile_probe(compile_cmd: List[str],
     removed_macros: List[str] = []
 
     for attempt in range(max_retries + 1):
-        print(f"[core] Compiling probe (attempt {attempt + 1}): {' '.join(compile_cmd)}")
+        logging.getLogger("core").info(f"Compiling probe (attempt {attempt + 1}): {' '.join(compile_cmd)}")
         result = subprocess.run(
             compile_cmd,
             capture_output=True,
@@ -256,27 +257,27 @@ def compile_probe(compile_cmd: List[str],
             return True, removed_macros
 
         stderr = result.stderr
-        print(f"[core] Compilation failed (exit {result.returncode})", file=sys.stderr)
+        logging.getLogger("core").error(f"Compilation failed (exit {result.returncode})")
 
         if attempt >= max_retries:
-            print("[core] Max retries reached. Giving up on this probe file.", file=sys.stderr)
-            print(f"[core] Last stderr:\n{stderr[:2000]}", file=sys.stderr)
+            logging.getLogger("core").error("Max retries reached. Giving up on this probe file.")
+            logging.getLogger("core").error(f"Last stderr:\n{stderr[:2000]}")
             return False, removed_macros
 
         error_lines = _parse_probe_error_lines(stderr, probe_c_path)
         if not error_lines:
             # Can't identify problem lines — print stderr and bail
-            print("[core] Cannot identify error lines in compiler output:", file=sys.stderr)
-            print(stderr[:2000], file=sys.stderr)
+            logging.getLogger("core").error("Cannot identify error lines in compiler output:")
+            logging.getLogger("core").error(stderr[:2000])
             return False, removed_macros
 
         names, count = _remove_probes_at_lines(probe_c_path, error_lines)
         if count == 0:
-            print("[core] Could not remove any probes based on error lines.", file=sys.stderr)
+            logging.getLogger("core").error("Could not remove any probes based on error lines.")
             return False, removed_macros
 
         removed_macros.extend(names)
-        print(f"[core] Removed {count} problematic probe(s): {names}")
+        logging.getLogger("core").info(f"Removed {count} problematic probe(s): {names}")
 
     return False, removed_macros
 
@@ -299,7 +300,7 @@ def process_file(source_file: str,
 
     Returns a dict {macro_name: value_or_null} for all discovered macros.
     """
-    print(f"Processing: {source_file}")
+    logging.getLogger("core").info(f"Processing: {source_file}")
     base, ext = os.path.splitext(source_file)
 
     # Derive flags list for preprocessor (-E -dM only needs -D/-I/-isystem/etc.)
@@ -330,7 +331,7 @@ def process_file(source_file: str,
         expected_probe_names = injected_names
 
         if not expected_probe_names:
-            print(f"[core] No probes generated for {source_file}")
+            logging.getLogger("core").info(f"No probes generated for {source_file}")
             return {}
 
         # Step 2: build and run compile command
@@ -339,12 +340,12 @@ def process_file(source_file: str,
         )
         
         if compile_cmd is None:
-            print(f"[core] Could not build compile command for {source_file}", file=sys.stderr)
+            logging.getLogger("core").error(f"Could not build compile command for {source_file}")
             return None
 
         success, removed_macro_names = compile_probe(compile_cmd, probe_c_path, directory)
         if not success:
-            print(f"[core] Probe compilation failed for {source_file}", file=sys.stderr)
+            logging.getLogger("core").error(f"Probe compilation failed for {source_file}")
             assert False, "Probe compilation failed"
 
         # Update expected probe names (remove the ones that were dropped)
@@ -368,13 +369,12 @@ def process_file(source_file: str,
         silently_missing = all_expected - actually_returned
 
         if silently_missing:
-            print(
-                f"[core] WARNING: {len(silently_missing)} probe(s) were expected but "
-                f"not returned by the ELF reader for {source_file}:",
-                file=sys.stderr,
+            logging.getLogger("core").warning(
+                f"{len(silently_missing)} probe(s) were expected but "
+                f"not returned by the ELF reader for {source_file}:"
             )
             for name in sorted(silently_missing):
-                print(f"[core]   - MISSING: {name}", file=sys.stderr)
+                logging.getLogger("core").warning(f"  - MISSING: {name}")
         # ──────────────────────────────────────────────────────────────────
 
         return macros
@@ -386,9 +386,9 @@ def process_file(source_file: str,
             if os.path.exists(path):
                 try:
                     os.remove(path)
-                    print(f"[core] Cleaned up {path}")
+                    logging.getLogger("core").info(f"Cleaned up {path}")
                 except OSError as e:
-                    print(f"[core] Warning: Could not remove {path}: {e}", file=sys.stderr)
+                    logging.getLogger("core").warning(f"Could not remove {path}: {e}")
 
 
 # ---------------------------------------------------------------------------

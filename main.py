@@ -1,6 +1,7 @@
 import os
 import argparse
 import json
+import logging
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -11,29 +12,43 @@ from core import process_file
 from conditional_macro_scanner import collect_conditional_macros
 
 
+class SilenceFilter(logging.Filter):
+    def filter(self, record):
+        return record.name == "Bar"
+
+
+def setup_logging(silence: bool):
+    log_format = "[%(name)s] %(message)s"
+    logging.basicConfig(level=logging.INFO, format=log_format)
+    
+    if silence:
+        for handler in logging.root.handlers:
+            handler.addFilter(SilenceFilter())
+
+
 def load_env_config():
     """Load environment variables from local configuration files to temporarily override."""
     config_file = "env.json"
     if os.path.exists(config_file):
-        print(f"Loading environment variables from {config_file}")
+        logging.getLogger("main").info(f"Loading environment variables from {config_file}")
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 for k, v in data.items():
                     os.environ[k] = str(v)
         except Exception as e:
-            print(f"Error loading {config_file}: {e}", file=sys.stderr)
+            logging.getLogger("main").error(f"Error loading {config_file}: {e}")
          
 def generate_compile_commands(repo_dir, build_dir):
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
     if not os.path.exists(compile_commands_path):
-        print("Generating compile_commands.json via CMake...")
+        logging.getLogger("main").info("Generating compile_commands.json via CMake...")
         cmd = ["cmake", "-G", "Unix Makefiles", "-S", repo_dir, "-B", build_dir,
                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"]
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as e:
-            print(f"CMake failed: {e}", file=sys.stderr)
+            logging.getLogger("main").error(f"CMake failed: {e}")
             return None
     return compile_commands_path
 
@@ -43,9 +58,9 @@ def fallback_find_c_files(repo_dir, clang_exec="clang", compile_fallback=False):
         "compile_commands.json missing and --compile-fallback is not enabled. "
         "Halting to avoid inaccurate extraction."
     )
-    print("WARNING: compile_commands.json not found!", file=sys.stderr)
-    print("WARNING: Falling back to naive recursive C file search.", file=sys.stderr)
-    print("WARNING: Macro extraction results may be incomplete or inaccurate!", file=sys.stderr)
+    logging.getLogger("main").warning("compile_commands.json not found!")
+    logging.getLogger("main").warning("Falling back to naive recursive C file search.")
+    logging.getLogger("main").warning("Macro extraction results may be incomplete or inaccurate!")
     commands = []
     repo_path = Path(repo_dir)
     for ext in ("*.c", "*.cpp", "*.cxx", "*.cc"):
@@ -127,8 +142,15 @@ def main():
         help="Output compilation target file paths to a text file (each enclosed in quotes)",
         default=None,
     )
+    parser.add_argument(
+        "--silence",
+        action="store_true",
+        help="Silence all outputs except for the [Bar] tag",
+    )
 
     args = parser.parse_args()
+    
+    setup_logging(args.silence)
 
     repo_dir = os.path.abspath(args.repo_dir)
     build_dir = os.path.join(repo_dir, "build")
@@ -141,7 +163,7 @@ def main():
 
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
 
-    print(f"[Bar] Init Cmd List")
+    logging.getLogger("Bar").info("Init Cmd List")
     if not os.path.exists(compile_commands_path):
         generated_path = generate_compile_commands(repo_dir, build_dir)
         if generated_path and os.path.exists(generated_path):
@@ -151,18 +173,18 @@ def main():
         try:
             os.remove(output_file)
         except OSError as e:
-            print(f"Warning: Could not remove existing output file: {e}")
+            logging.getLogger("main").warning(f"Could not remove existing output file: {e}")
 
     commands = []
     if not os.path.exists(compile_commands_path):
         commands = fallback_find_c_files(repo_dir, clang_exec, compile_fallback)
     else:
-        print(f"Reading compile commands from {compile_commands_path}")
+        logging.getLogger("main").info(f"Reading compile commands from {compile_commands_path}")
         try:
             with open(compile_commands_path, "r", encoding="utf-8") as f:
                 commands = json.load(f)
         except Exception as e:
-            print(f"Error reading compile_commands.json: {e}", file=sys.stderr)
+            logging.getLogger("main").error(f"Error reading compile_commands.json: {e}")
             sys.exit(1)
 
     if args.file_list:
@@ -176,9 +198,9 @@ def main():
                             fpath = os.path.join(directory, fpath)
                         fpath = os.path.abspath(fpath)
                         fl.write(f'"{fpath}"\n')
-            print(f"File list saved to {args.file_list}")
+            logging.getLogger("main").info(f"File list saved to {args.file_list}")
         except Exception as e:
-            print(f"Error writing file list to {args.file_list}: {e}", file=sys.stderr)
+            logging.getLogger("main").error(f"Error writing file list to {args.file_list}: {e}")
 
     all_macros = {}
     count = 0
@@ -205,7 +227,7 @@ def main():
             import shlex
             original_cmd = shlex.join(cmd["arguments"])
         else:
-            print(f"Warning: no command/arguments for {file_path}, skipping.", file=sys.stderr)
+            logging.getLogger("main").warning(f"Warning: no command/arguments for {file_path}, skipping.")
             return None
 
         macros = process_file(
@@ -217,8 +239,8 @@ def main():
         )
         return macros
 
-    print(f"[core] Starting parallel processing with {'automatic' if args.jobs is None else args.jobs} workers...")
-    print(f"[Bar] total job count: {len(commands)}")
+    logging.getLogger("core").info(f"Starting parallel processing with {'automatic' if args.jobs is None else args.jobs} workers...")
+    logging.getLogger("Bar").info(f"total job count: {len(commands)}")
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
         futures = {executor.submit(worker, cmd): cmd for cmd in commands}
         for future in concurrent.futures.as_completed(futures):
@@ -229,26 +251,25 @@ def main():
                         if macros:
                             all_macros.update(macros)
                         count += 1
-                        print(f"[Bar] processed {count} files.")
+                        logging.getLogger("Bar").info(f"processed {count} files.")
             except Exception as e:
-                print(f"[core] Error processing file: {e}", file=sys.stderr)
+                logging.getLogger("core").error(f"Error processing file: {e}")
 
-    print(f"[core] Processed {count} files.")
+    logging.getLogger("core").info(f"Processed {count} files.")
 
     # --conditional-macro filter (enabled by default)
     if args.conditional_macro:
-        print("[conditional-macro] Scanning source files for conditional-compilation macros...")
+        logging.getLogger("conditional-macro").info("Scanning source files for conditional-compilation macros...")
         conditional_names = collect_conditional_macros(repo_dir)
-        print(f"[conditional-macro] Found {len(conditional_names)} unique macro names in #if/#ifdef/etc. directives.")
+        logging.getLogger("conditional-macro").info(f"Found {len(conditional_names)} unique macro names in #if/#ifdef/etc. directives.")
         before = len(all_macros)
         all_macros = {k: v for k, v in all_macros.items() if k in conditional_names}
-        print(f"[conditional-macro] Kept {len(all_macros)}/{before} macros "
-              f"(use --no-conditional-macro to disable this filter).")
+        logging.getLogger("conditional-macro").info(f"Kept {len(all_macros)}/{before} macros (use --no-conditional-macro to disable this filter).")
 
     save_output(all_macros, output_file, output_fmt)
 
     evaluable = sum(1 for v in all_macros.values() if v is not None)
-    print(f"[Bar] Extracted {len(all_macros)} macros ({evaluable} with static values). Saved to {output_file} [{output_fmt}]")
+    logging.getLogger("Bar").info(f"Extracted {len(all_macros)} macros ({evaluable} with static values). Saved to {output_file} [{output_fmt}]")
 
 
 if __name__ == "__main__":

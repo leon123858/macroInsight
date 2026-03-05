@@ -13,6 +13,7 @@ The probe file contains one global variable per macro:
 import re
 import os
 import subprocess
+import logging
 
 # Sentinel value written when a macro is not a compile-time integer constant.
 # elf_reader.py interprets this as None (not evaluable).
@@ -112,13 +113,13 @@ def inject_probes(source_path, target_path=None, compile_flags=None, known_macro
     # This is the authoritative source — it reflects the exact macro environment
     # that the compile command would set up.
     cmd = [clang_exec, "-E", "-dM"] + compile_flags + [source_path]
-    print(f"Running Preprocessor: {' '.join(cmd)}")
+    logging.getLogger("macro_extractor").info(f"Running Preprocessor: {' '.join(cmd)}")
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         macro_output = result.stdout
     except subprocess.CalledProcessError as e:
-        print(f"Error running preprocessor: {e.stderr}")
+        logging.getLogger("macro_extractor").error(f"Error running preprocessor: {e.stderr}")
         macro_output = e.stdout if e.stdout else ""
 
     # Match "#define NAME [value]" — note NO parenthesis after NAME so function-like
@@ -178,4 +179,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         inject_probes(sys.argv[1])
     else:
-        print("Usage: python macro_extractor.py <source.c>")
+        logging.getLogger("macro_extractor").info("Usage: python macro_extractor.py <source.c>")

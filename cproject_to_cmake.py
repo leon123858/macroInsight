@@ -20,6 +20,7 @@ Usage:
 import argparse
 import sys
 import re
+import logging
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -272,19 +273,20 @@ def list_configurations(root: ET.Element) -> list[str]:
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
 
     # --- 讀取 .cproject ---
     cproject_path = Path(args.cproject)
     if not cproject_path.exists():
-        print(f"[ERROR] 找不到 .cproject 檔案: {cproject_path}", file=sys.stderr)
+        logging.getLogger("cproject_to_cmake").error(f"[ERROR] 找不到 .cproject 檔案: {cproject_path}")
         sys.exit(1)
 
     try:
         tree = ET.parse(cproject_path)
         root = tree.getroot()
     except ET.ParseError as e:
-        print(f"[ERROR] XML 解析失敗: {e}", file=sys.stderr)
+        logging.getLogger("cproject_to_cmake").error(f"[ERROR] XML 解析失敗: {e}")
         sys.exit(1)
 
     # --- 列出所有 configurations ---
@@ -292,43 +294,43 @@ def main():
 
     if args.list_configs:
         if all_configs:
-            print("可用的 configurationName：")
+            logging.getLogger("cproject_to_cmake").info("可用的 configurationName：")
             for c in all_configs:
-                print(f"  - {c}")
+                logging.getLogger("cproject_to_cmake").info(f"  - {c}")
         else:
-            print("未找到任何 configuration。")
+            logging.getLogger("cproject_to_cmake").info("未找到任何 configuration。")
         return
 
     # --- 選擇目標 configuration ---
     config_name = args.config
     if config_name is None:
         if not all_configs:
-            print("[ERROR] 找不到任何 configuration，請確認 .cproject 格式正確。", file=sys.stderr)
+            logging.getLogger("cproject_to_cmake").error("[ERROR] 找不到任何 configuration，請確認 .cproject 格式正確。")
             sys.exit(1)
         config_name = all_configs[0]
-        print(f"[INFO] 未指定 --config，自動選擇第一個: \"{config_name}\"")
+        logging.getLogger("cproject_to_cmake").info(f"[INFO] 未指定 --config，自動選擇第一個: \"{config_name}\"")
     
     cfg_node = _get_configuration_node(root, config_name)
     if cfg_node is None:
-        print(f"[ERROR] 找不到 configurationName=\"{config_name}\"", file=sys.stderr)
-        print(f"        可用的有: {all_configs}", file=sys.stderr)
+        logging.getLogger("cproject_to_cmake").error(f"[ERROR] 找不到 configurationName=\"{config_name}\"")
+        logging.getLogger("cproject_to_cmake").error(f"        可用的有: {all_configs}")
         sys.exit(1)
 
-    print(f"[INFO] 使用 configuration: \"{config_name}\"")
+    logging.getLogger("cproject_to_cmake").info(f"[INFO] 使用 configuration: \"{config_name}\"")
 
     # --- 提取資訊 ---
     defines  = extract_defines(cfg_node)
     includes = extract_includes(cfg_node)
     excludes = extract_excludes(cfg_node)
 
-    print(f"[INFO] 找到 {len(defines)} 個 define macro: {defines}")
-    print(f"[INFO] 找到 {len(includes)} 個 include path: {includes}")
-    print(f"[INFO] 找到 {len(excludes)} 個 exclude path: {excludes}")
+    logging.getLogger("cproject_to_cmake").info(f"[INFO] 找到 {len(defines)} 個 define macro: {defines}")
+    logging.getLogger("cproject_to_cmake").info(f"[INFO] 找到 {len(includes)} 個 include path: {includes}")
+    logging.getLogger("cproject_to_cmake").info(f"[INFO] 找到 {len(excludes)} 個 exclude path: {excludes}")
 
     # --- 讀取模板 ---
     template_path = Path(args.template)
     if not template_path.exists():
-        print(f"[ERROR] 找不到模板檔案: {template_path}", file=sys.stderr)
+        logging.getLogger("cproject_to_cmake").error(f"[ERROR] 找不到模板檔案: {template_path}")
         sys.exit(1)
 
     template_content = template_path.read_text(encoding="utf-8")
@@ -338,7 +340,7 @@ def main():
 
     output_path = Path(args.output)
     output_path.write_text(output_content, encoding="utf-8")
-    print(f"[INFO] 已產生: {output_path.resolve()}")
+    logging.getLogger("cproject_to_cmake").info(f"[INFO] 已產生: {output_path.resolve()}")
 
 
 if __name__ == "__main__":

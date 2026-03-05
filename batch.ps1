@@ -7,7 +7,8 @@ param(
     [string]$Clang = "clang",
     [switch]$CompileFallback,
     [string]$CProjectConfig = "",
-    [string]$FileList = ""
+    [string]$FileList = "",
+    [bool]$Silence = $true
 )
 
 # Default output filename depends on the chosen format
@@ -107,6 +108,9 @@ if ($CompileFallback) {
 }
 if ($FileList -ne "") {
     $pyArgs += @("--file-list", $FileList)
+}
+if ($Silence) {
+    $pyArgs += "--silence"
 }
 $fullCmd = $pythonExec + $pyArgs
 
