@@ -1,10 +1,12 @@
 using MacroInsightApi.Services;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<EnvService>();
 builder.Services.AddScoped<ProjectService>();
 
@@ -13,14 +15,16 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
+
+    Console.WriteLine("swagger run on:  {url}/swagger");
 }
 
 // Initialize Python Engine Async during startup
 using (var scope = app.Services.CreateScope())
 {
     var envService = scope.ServiceProvider.GetRequiredService<EnvService>();
-    await envService.InitializePythonEngineAsync();
 }
 
 app.MapGet("/api/env/cmake", (EnvService env) => Results.Ok(env.CheckCmake()));

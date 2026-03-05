@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Python.Runtime;
 
 namespace MacroInsightApi.Services;
 
@@ -21,83 +20,7 @@ public class ProjectService
 
     private string RunPythonScript(string scriptPath, string targetDirectory, string[] args)
     {
-        using (Py.GIL())
-        {
-            dynamic sys = Py.Import("sys");
-            dynamic io = Py.Import("io");
-            dynamic os = Py.Import("os");
-            
-            var originalArgv = sys.argv;
-            var oldStdout = sys.stdout;
-            var oldStderr = sys.stderr;
-            var oldDir = os.getcwd();
-
-            dynamic stdoutString = io.StringIO();
-            dynamic stderrString = io.StringIO();
-
-            try
-            {
-                var scriptName = Path.GetFileName(scriptPath);
-                var fullArgs = new List<string> { scriptName };
-                fullArgs.AddRange(args);
-                
-                sys.argv = fullArgs.ToArray();
-                sys.stdout = stdoutString; // Redirect stdout
-                sys.stderr = stderrString; // Redirect stderr
-                os.chdir(targetDirectory);
-
-                using (var scope = Py.CreateScope())
-                {
-                    scope.Set("__name__", "__main__");
-                    // Add the script's directory to sys.path so it can import local modules
-                    var scriptDir = Path.GetDirectoryName(scriptPath);
-                    if (scriptDir != null) sys.path.insert(0, scriptDir);
-                    
-                    try
-                    {
-                        scope.Exec(File.ReadAllText(scriptPath));
-                    }
-                    finally
-                    {
-                        if (scriptDir != null) sys.path.pop(0);
-                    }
-                }
-
-                return (string)stdoutString.getvalue();
-            }
-            catch (PythonException ex)
-            {
-                dynamic excType = sys.exc_info()[0];
-                if (excType != null && (string)excType.__name__ == "SystemExit")
-                {
-                    dynamic excValue = sys.exc_info()[1];
-                    try 
-                    {
-                        PyObject codeObj = excValue.code;
-                        if (codeObj.IsNone()) 
-                        {
-                            return (string)stdoutString.getvalue();
-                        }
-                        else if (codeObj.HasAttr("__int__") && codeObj.As<int>() == 0) 
-                        {
-                            return (string)stdoutString.getvalue();
-                        }
-                    } 
-                    catch { }
-                }
-
-                var stderr = (string)stderrString.getvalue();
-                var stdout = (string)stdoutString.getvalue();
-                throw new Exception($"Python execution failed.\nError: {ex.Message}\nStdout: {stdout}\nStderr: {stderr}");
-            }
-            finally
-            {
-                sys.argv = originalArgv;
-                sys.stdout = oldStdout;
-                sys.stderr = oldStderr;
-                os.chdir(oldDir);
-            }
-        }
+        return "";
     }
 
     public List<string> ListConfigs(string targetDirectory)

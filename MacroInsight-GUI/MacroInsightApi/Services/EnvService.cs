@@ -1,27 +1,9 @@
 using System.Diagnostics;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Python.Runtime;
 
 namespace MacroInsightApi.Services;
 
 public class EnvService
 {
-    private bool _pythonInitialized = false;
-
-    public async Task InitializePythonEngineAsync()
-    {
-        if (_pythonInitialized) return;
-
-        // Python.Included Setup
-        await Python.Included.Installer.SetupPython();
-        
-        PythonEngine.Initialize();
-        
-        _pythonInitialized = true;
-    }
-
-
     public CmakeStatus CheckCmake()
     {
         var cmakeOutput = RunCommand("cmake", "--version");

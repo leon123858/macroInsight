@@ -8,8 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
-    <PackageReference Include="Python.Included" Version="3.13.1" />
-    <PackageReference Include="pythonnet" Version="3.0.5" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.4" />
   </ItemGroup>
 
 </Project>
