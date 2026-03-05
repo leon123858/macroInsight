@@ -141,6 +141,7 @@ def main():
 
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
 
+    print(f"[Bar] Init Cmd List")
     if not os.path.exists(compile_commands_path):
         generated_path = generate_compile_commands(repo_dir, build_dir)
         if generated_path and os.path.exists(generated_path):
@@ -216,7 +217,8 @@ def main():
         )
         return macros
 
-    print(f"Starting parallel processing with {'automatic' if args.jobs is None else args.jobs} workers...")
+    print(f"[core] Starting parallel processing with {'automatic' if args.jobs is None else args.jobs} workers...")
+    print(f"[Bar] total job count: {len(commands)}")
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
         futures = {executor.submit(worker, cmd): cmd for cmd in commands}
         for future in concurrent.futures.as_completed(futures):
@@ -227,10 +229,11 @@ def main():
                         if macros:
                             all_macros.update(macros)
                         count += 1
+                        print(f"[Bar] processed {count} files.")
             except Exception as e:
-                print(f"Error processing file: {e}", file=sys.stderr)
+                print(f"[core] Error processing file: {e}", file=sys.stderr)
 
-    print(f"Processed {count} files.")
+    print(f"[core] Processed {count} files.")
 
     # --conditional-macro filter (enabled by default)
     if args.conditional_macro:
@@ -245,7 +248,7 @@ def main():
     save_output(all_macros, output_file, output_fmt)
 
     evaluable = sum(1 for v in all_macros.values() if v is not None)
-    print(f"Extracted {len(all_macros)} macros ({evaluable} with static values). Saved to {output_file} [{output_fmt}]")
+    print(f"[Bar] Extracted {len(all_macros)} macros ({evaluable} with static values). Saved to {output_file} [{output_fmt}]")
 
 
 if __name__ == "__main__":
