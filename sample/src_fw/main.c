@@ -8,5 +8,5 @@ int GLOBAL_VAR = 42;
 int my_function(void) { return 1; }
 
 int main(void) {
-    return 0;
+    return 0
 }
