@@ -34,6 +34,53 @@ def api_config():
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
     
     if not os.path.exists(compile_commands_path):
+        cmake_lists_path = os.path.join(repo_dir, "CMakeLists.txt")
+        cproject_path = os.path.join(repo_dir, ".cproject")
+        
+        if not os.path.exists(cmake_lists_path) and os.path.exists(cproject_path):
+            log.info(f"CMakeLists.txt not found. Generating from {cproject_path} ...")
+            try:
+                import xml.etree.ElementTree as ET
+                from cproject_to_cmake import (
+                    list_configurations, 
+                    _get_configuration_node, 
+                    extract_defines, 
+                    extract_includes, 
+                    extract_excludes, 
+                    render_template
+                )
+                tree = ET.parse(cproject_path)
+                root = tree.getroot()
+                
+                cproject_config = data.get("cproject_config")
+                if not cproject_config:
+                    all_configs = list_configurations(root)
+                    if all_configs:
+                        cproject_config = all_configs[0]
+                
+                if cproject_config:
+                    cfg_node = _get_configuration_node(root, cproject_config)
+                    if cfg_node is not None:
+                        defines = extract_defines(cfg_node)
+                        includes = extract_includes(cfg_node)
+                        excludes = extract_excludes(cfg_node)
+                        
+                        template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cmake_template.txt")
+                        if os.path.exists(template_path):
+                            with open(template_path, "r", encoding="utf-8") as f:
+                                template_content = f.read()
+                            
+                            output_content = render_template(template_content, defines, includes, excludes)
+                            with open(cmake_lists_path, "w", encoding="utf-8") as f:
+                                f.write(output_content)
+                            log.info(f"Generated CMakeLists.txt using .cproject configuration: {cproject_config}")
+                        else:
+                            log.warning(f"Template file not found: {template_path}")
+                    else:
+                        log.warning(f"Configuration node '{cproject_config}' not found in .cproject")
+            except Exception as e:
+                log.error(f"Error generating CMakeLists.txt from .cproject: {e}")
+
         generated_path = generate_compile_commands(repo_dir, build_dir)
         if generated_path and os.path.exists(generated_path):
             compile_commands_path = generated_path
@@ -82,6 +129,25 @@ def api_config():
         "repo_dir": repo_dir,
         "clang_exec": clang_exec
     })
+
+@app.route("/api/cproject-configs", methods=["POST"])
+def api_cproject_configs():
+    data = request.json
+    repo_dir = os.path.abspath(data.get("repo_dir", ".\\sample"))
+    cproject_path = os.path.join(repo_dir, ".cproject")
+    
+    if not os.path.exists(cproject_path):
+        return jsonify({"configs": []})
+        
+    try:
+        import xml.etree.ElementTree as ET
+        from cproject_to_cmake import list_configurations
+        tree = ET.parse(cproject_path)
+        root = tree.getroot()
+        configs = list_configurations(root)
+        return jsonify({"configs": configs})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 @app.route("/api/process", methods=["POST"])
 def api_process():
@@ -140,6 +206,60 @@ def api_cleanup():
         "output_file": output_file
     })
 
+@app.route("/api/hard-cleanup", methods=["POST"])
+def api_hard_cleanup():
+    import shutil
+    data = request.json
+    repo_dir = data.get("repo_dir")
+    preview = data.get("preview", False)
+    
+    if not repo_dir:
+        return jsonify({"error": "No repo_dir provided"}), 400
+        
+    build_dir = os.path.join(repo_dir, "build")
+    cmake_lists = os.path.join(repo_dir, "CMakeLists.txt")
+    cproject_path = os.path.join(repo_dir, ".cproject")
+    
+    targets = []
+    
+    # Target CMakeLists.txt only if .cproject exists
+    if os.path.exists(cmake_lists) and os.path.exists(cproject_path):
+        targets.append(cmake_lists)
+        
+    if os.path.exists(build_dir):
+        targets.append(build_dir)
+        
+    if preview:
+        return jsonify({"status": "success", "targets": targets})
+        
+    deleted = []
+    errors = []
+    
+    for target in targets:
+        try:
+            if os.path.isdir(target):
+                shutil.rmtree(target)
+            else:
+                os.remove(target)
+            deleted.append(target)
+            log.info(f"Deleted {target}")
+        except Exception as e:
+            errors.append(f"Could not remove {target}: {e}")
+            log.error(f"Could not remove {target}: {e}")
+            
+    if errors:
+        return jsonify({
+            "status": "partial_success", 
+            "deleted": deleted, 
+            "error": "Some files could not be deleted",
+            "details": "\n".join(errors)
+        }), 500
+        
+    return jsonify({
+        "status": "success",
+        "deleted": deleted
+    })
+
 def start_server():
     app.run(host="127.0.0.1", port=5000, debug=False)
 
@@ -149,5 +269,6 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
     
+    # 啟用 debug=True，這樣在視窗內按 F12 (或右鍵選單) 就可以打開開發者工具 (DevTools)
     webview.create_window("MacroInsight GUI", "http://127.0.0.1:5000", width=1024, height=768)
-    webview.start()
+    webview.start(debug=True)

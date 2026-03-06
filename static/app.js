@@ -6,6 +6,49 @@ const statusText = document.getElementById('status-text');
 const logView = document.getElementById('log-view');
 const startBtn = document.getElementById('start-btn');
 const resetBtn = document.getElementById('reset-btn');
+const hardCleanupBtn = document.getElementById('hard-cleanup-btn');
+const loadConfigsBtn = document.getElementById('load-configs-btn');
+const cprojectConfigGroup = document.getElementById('cproject-config-group');
+const cprojectConfigSelect = document.getElementById('cproject-config');
+
+let lastRepoDir = ""; // Store for cleanup
+
+loadConfigsBtn.addEventListener('click', async () => {
+    const repoDir = document.getElementById('repo-dir').value;
+    loadConfigsBtn.disabled = true;
+    loadConfigsBtn.textContent = 'Loading...';
+    try {
+        const res = await fetch('/api/cproject-configs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_dir: repoDir })
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            alert(`Error loading configs: ${data.error}`);
+            cprojectConfigGroup.style.display = 'none';
+        } else if (data.configs && data.configs.length > 0) {
+            cprojectConfigSelect.innerHTML = '';
+            data.configs.forEach(cfg => {
+                const opt = document.createElement('option');
+                opt.value = cfg;
+                opt.textContent = cfg;
+                cprojectConfigSelect.appendChild(opt);
+            });
+            cprojectConfigGroup.style.display = 'block';
+        } else {
+            alert('No .cproject found or no configurations available.');
+            cprojectConfigGroup.style.display = 'none';
+        }
+    } catch (err) {
+        alert(`Failed to load configs: ${err.message}`);
+        cprojectConfigGroup.style.display = 'none';
+    } finally {
+        loadConfigsBtn.disabled = false;
+        loadConfigsBtn.textContent = 'Load .cproject Configs';
+    }
+});
 
 function logInfo(msg, type = 'info') {
     const el = document.createElement('div');
@@ -89,6 +132,11 @@ form.addEventListener('submit', async (e) => {
     const outputFile = document.getElementById('output-file').value;
     const jobs = parseInt(document.getElementById('jobs').value) || 4;
 
+    let cprojectConfig = null;
+    if (cprojectConfigGroup.style.display !== 'none') {
+        cprojectConfig = cprojectConfigSelect.value;
+    }
+
     // UI Update
     form.style.display = 'none';
     progressContainer.style.display = 'block';
@@ -106,7 +154,8 @@ form.addEventListener('submit', async (e) => {
                 repo_dir: repoDir,
                 clang: clangExec,
                 output_format: outputFormat,
-                compile_fallback: compileFallback
+                compile_fallback: compileFallback,
+                cproject_config: cprojectConfig
             })
         });
 
@@ -150,6 +199,8 @@ form.addEventListener('submit', async (e) => {
         document.getElementById('result-text').innerText =
             `Successfully extracted ${cleanupData.total_extracted} macros (${cleanupData.evaluable} static values).\n\nSaved to: ${cleanupData.output_file}`;
 
+        lastRepoDir = configData.repo_dir;
+
     } catch (err) {
         logInfo(`Fatal error: ${err.message}`, 'error');
         statusText.textContent = 'Run failed.';
@@ -166,4 +217,53 @@ resetBtn.addEventListener('click', () => {
     form.style.display = 'block';
     progressContainer.style.display = 'none';
     resultContainer.style.display = 'none';
+});
+
+hardCleanupBtn.addEventListener('click', async () => {
+    if (!lastRepoDir) return;
+
+    hardCleanupBtn.disabled = true;
+    hardCleanupBtn.textContent = 'Checking...';
+    try {
+        const preRes = await fetch('/api/hard-cleanup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_dir: lastRepoDir, preview: true })
+        });
+        const preData = await preRes.json();
+
+        if (preData.error) {
+            alert(`Preview Error: ${preData.error}`);
+            return;
+        }
+
+        if (!preData.targets || preData.targets.length === 0) {
+            alert("No generated files found to clean up.");
+            return;
+        }
+
+        const confirmMsg = `The following files/directories will be deleted:\n\n${preData.targets.join('\n')}\n\nAre you sure you want to delete them?`;
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        hardCleanupBtn.textContent = 'Cleaning...';
+
+        const res = await fetch('/api/hard-cleanup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo_dir: lastRepoDir, preview: false })
+        });
+        const data = await res.json();
+        if (data.error) {
+            alert(`Cleanup Error: ${data.error}\n\nDetails:\n${data.details || ''}`);
+        } else {
+            alert(`Cleanup successful!\nDeleted:\n${data.deleted.join('\n')}`);
+        }
+    } catch (err) {
+        alert(`Cleanup failed: ${err.message}`);
+    } finally {
+        hardCleanupBtn.disabled = false;
+        hardCleanupBtn.textContent = 'Cleanup Generated Files';
+    }
 });

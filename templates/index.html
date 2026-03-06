@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>MacroInsight</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -14,9 +16,20 @@
         </header>
         <main>
             <form id="config-form" class="glass-panel">
-                <div class="form-group">
-                    <label>Repository Directory (-r)</label>
-                    <input type="text" id="repo-dir" value=".\sample" />
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Repository Directory (-r)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="repo-dir" value=".\sample" style="flex: 1;" />
+                            <button type="button" id="load-configs-btn" style="white-space: nowrap;">Load .cproject
+                                Configs</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group" id="cproject-config-group" style="display: none;">
+                    <label>.cproject Configuration</label>
+                    <select id="cproject-config">
+                    </select>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -50,12 +63,12 @@
                 </div>
                 <div class="form-group">
                     <label>Concurrency Limit</label>
-                    <input type="number" id="jobs" value="4" min="1" max="64"/>
+                    <input type="number" id="jobs" value="4" min="1" max="64" />
                 </div>
-                
+
                 <button type="submit" id="start-btn">Start Extraction</button>
             </form>
-            
+
             <div id="progress-container" style="display: none;" class="glass-panel dark-panel">
                 <h2>Processing</h2>
                 <div class="progress-bar-wrapper">
@@ -64,14 +77,18 @@
                 <p id="status-text">Initializing...</p>
                 <div class="log-view" id="log-view"></div>
             </div>
-            
+
             <div id="result-container" style="display: none;" class="glass-panel success-panel">
                 <h2>Extraction Complete</h2>
                 <p id="result-text"></p>
-                <button id="reset-btn">Run Again</button>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                    <button id="reset-btn">Run Again</button>
+                    <button id="hard-cleanup-btn" class="secondary-btn">Cleanup Generated Files</button>
+                </div>
             </div>
         </main>
     </div>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
+
 </html>
