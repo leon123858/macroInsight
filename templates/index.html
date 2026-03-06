@@ -15,6 +15,17 @@
             <p>Compile Command & Macro Extraction</p>
         </header>
         <main>
+            <div id="system-check" class="glass-panel" style="margin-bottom: 20px;">
+                <h3 style="margin-top: 0;">System Tools</h3>
+                <ul id="tool-list" style="list-style: none; padding: 0; margin: 0; line-height: 1.6;">
+                    <li>Checking installed tools...</li>
+                </ul>
+                <div id="llvm-download" style="display: none; margin-top: 15px;">
+                    <a href="https://github.com/llvm/llvm-project/releases" target="_blank" class="secondary-btn"
+                        style="text-decoration: none; display: inline-block; text-align: center;">Download LLVM</a>
+                </div>
+            </div>
+
             <form id="config-form" class="glass-panel">
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
@@ -35,8 +46,8 @@
                     <div class="form-group">
                         <label>Compiler (--clang)</label>
                         <select id="clang-exec">
-                            <option value="clang">clang</option>
-                            <option value="armclang">armclang</option>
+                            <option value="clang">clang (System PATH)</option>
+                            <option value="armclang">armclang (System PATH)</option>
                         </select>
                     </div>
                     <div class="form-group">

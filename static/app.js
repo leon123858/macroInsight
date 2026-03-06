@@ -12,6 +12,79 @@ const cprojectConfigGroup = document.getElementById('cproject-config-group');
 const cprojectConfigSelect = document.getElementById('cproject-config');
 
 let lastRepoDir = ""; // Store for cleanup
+let detectedCmakePath = null; // Store detected cmake path
+
+window.addEventListener('DOMContentLoaded', async () => {
+    const listEl = document.getElementById('tool-list');
+    const llvmDownload = document.getElementById('llvm-download');
+    const clangSelect = document.getElementById('clang-exec');
+
+    try {
+        const res = await fetch('/api/check-compilers');
+        const data = await res.json();
+
+        listEl.innerHTML = '';
+        let hasLlvm = false;
+
+        // Handle CMake
+        if (data.cmake && data.cmake.length > 0) {
+            data.cmake.forEach(p => {
+                const li = document.createElement('li');
+                li.innerHTML = `✅ CMake: <span style="color: #4CAF50;">${p}</span>`;
+                listEl.appendChild(li);
+            });
+            detectedCmakePath = data.cmake[0]; // Use the first one
+        } else {
+            const li = document.createElement('li');
+            li.innerHTML = `❌ CMake: <span style="color: #f44336;">Not Found</span>`;
+            listEl.appendChild(li);
+        }
+
+        // Handle LLVM
+        if (data.llvm && data.llvm.length > 0) {
+            hasLlvm = true;
+            data.llvm.forEach(p => {
+                const li = document.createElement('li');
+                li.innerHTML = `✅ LLVM/Clang: <span style="color: #4CAF50;">${p}</span>`;
+                listEl.appendChild(li);
+
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = `clang (${p})`;
+                clangSelect.appendChild(opt);
+            });
+        } else {
+            const li = document.createElement('li');
+            li.innerHTML = `❌ LLVM: <span style="color: #f44336;">Not Found</span>`;
+            listEl.appendChild(li);
+        }
+
+        if (!hasLlvm) {
+            llvmDownload.style.display = 'block';
+        }
+
+        // Handle DS-5
+        if (data.ds5 && data.ds5.length > 0) {
+            data.ds5.forEach(p => {
+                const li = document.createElement('li');
+                li.innerHTML = `✅ DS-5: <span style="color: #4CAF50;">${p}</span>`;
+                listEl.appendChild(li);
+
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = `armclang (${p})`;
+                clangSelect.appendChild(opt);
+            });
+        } else {
+            const li = document.createElement('li');
+            li.innerHTML = `❌ DS-5: <span style="color: #f44336;">Not Found</span>`;
+            listEl.appendChild(li);
+        }
+
+    } catch (err) {
+        listEl.innerHTML = `<li><span style="color: #f44336;">Error checking tools: ${err.message}</span></li>`;
+    }
+});
 
 loadConfigsBtn.addEventListener('click', async () => {
     const repoDir = document.getElementById('repo-dir').value;
@@ -155,7 +228,8 @@ form.addEventListener('submit', async (e) => {
                 clang: clangExec,
                 output_format: outputFormat,
                 compile_fallback: compileFallback,
-                cproject_config: cprojectConfig
+                cproject_config: cprojectConfig,
+                cmake_path: detectedCmakePath
             })
         });
 

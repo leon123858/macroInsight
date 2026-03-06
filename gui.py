@@ -5,6 +5,8 @@ import threading
 import logging
 import json
 import webview
+import contextlib
+import glob
 from flask import Flask, request, jsonify, render_template
 
 from main import load_env_config, generate_compile_commands, fallback_find_c_files, save_output, setup_logging
@@ -18,6 +20,54 @@ log = logging.getLogger("gui")
 def index():
     return render_template("index.html")
 
+@contextlib.contextmanager
+def temporary_path_override(tool_path):
+    if not tool_path or not os.path.isabs(tool_path):
+        yield
+        return
+    
+    old_path = os.environ.get("PATH", "")
+    tool_dir = os.path.dirname(tool_path)
+    
+    # Prepend the tool directory to PATH
+    os.environ["PATH"] = tool_dir + os.pathsep + old_path
+    try:
+        yield
+    finally:
+        os.environ["PATH"] = old_path
+
+@app.route("/api/check-compilers", methods=["GET"])
+def api_check_compilers():
+    program_files = [
+        os.environ.get("ProgramFiles", "C:\\Program Files"),
+        os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+    ]
+    
+    results = {
+        "cmake": [],
+        "llvm": [],
+        "ds5": []
+    }
+    
+    for pf in program_files:
+        if not os.path.exists(pf):
+            continue
+            
+        cmake_paths = glob.glob(os.path.join(pf, "CMake*", "bin", "cmake.exe"))
+        results["cmake"].extend(cmake_paths)
+        
+        llvm_paths = glob.glob(os.path.join(pf, "LLVM*", "bin", "clang.exe"))
+        results["llvm"].extend(llvm_paths)
+        
+        ds5_paths = glob.glob(os.path.join(pf, "DS-5*", "bin", "armclang.exe"))
+        ds5_paths.extend(glob.glob(os.path.join(pf, "DS-5*", "sw", "ARMCompiler*", "bin", "armclang.exe")))
+        results["ds5"].extend(ds5_paths)
+        
+    for key in results:
+        results[key] = list(set([os.path.abspath(p) for p in results[key]]))
+        
+    return jsonify(results)
+
 @app.route("/api/config", methods=["POST"])
 def api_config():
     data = request.json
@@ -26,9 +76,7 @@ def api_config():
     clang_exec = data.get("clang", "clang")
     compile_fallback = data.get("compile_fallback", False)
     file_list = data.get("file_list", None)
-    
-    # Do initial setup
-    load_env_config()
+    cmake_path = data.get("cmake_path", None)
     
     build_dir = os.path.join(repo_dir, "build")
     compile_commands_path = os.path.join(build_dir, "compile_commands.json")
@@ -81,7 +129,9 @@ def api_config():
             except Exception as e:
                 log.error(f"Error generating CMakeLists.txt from .cproject: {e}")
 
-        generated_path = generate_compile_commands(repo_dir, build_dir)
+        with temporary_path_override(cmake_path):
+            generated_path = generate_compile_commands(repo_dir, build_dir)
+            
         if generated_path and os.path.exists(generated_path):
             compile_commands_path = generated_path
 
@@ -168,13 +218,14 @@ def api_process():
         return jsonify({"macros": {}})
 
     try:
-        macros = process_file(
-            source_file=file_path,
-            original_cmd=original_cmd,
-            directory=directory,
-            known_macros={},
-            clang_exec=clang_exec,
-        )
+        with temporary_path_override(clang_exec):
+            macros = process_file(
+                source_file=file_path,
+                original_cmd=original_cmd,
+                directory=directory,
+                known_macros={},
+                clang_exec=clang_exec,
+            )
         return jsonify({"macros": macros or {}})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
