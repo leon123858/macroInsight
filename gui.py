@@ -311,6 +311,40 @@ def api_hard_cleanup():
         "deleted": deleted
     })
 
+@app.route("/api/save-as", methods=["POST"])
+def api_save_as():
+    import shutil
+    data = request.json
+    source_path = data.get("path")
+    if not source_path or not os.path.exists(source_path):
+        return jsonify({"error": "File not found"}), 404
+    
+    try:
+        if webview.windows:
+            window = webview.windows[0]
+            default_filename = os.path.basename(source_path)
+            file_types = ('JSON files (*.json)', 'All files (*.*)')
+            if source_path.endswith('.xml'):
+                file_types = ('XML files (*.xml)', 'All files (*.*)')
+                
+            result = window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                directory=os.path.dirname(source_path),
+                save_filename=default_filename,
+                file_types=file_types
+            )
+            
+            if result and len(result) > 0:
+                target_path = result[0]
+                shutil.copy2(source_path, target_path)
+                return jsonify({"status": "success", "saved_to": target_path})
+            else:
+                return jsonify({"status": "cancelled"})
+        else:
+            return jsonify({"error": "No GUI window available"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 def start_server():
     app.run(host="127.0.0.1", port=5000, debug=False)
 

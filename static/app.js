@@ -7,6 +7,7 @@ const logView = document.getElementById('log-view');
 const startBtn = document.getElementById('start-btn');
 const resetBtn = document.getElementById('reset-btn');
 const hardCleanupBtn = document.getElementById('hard-cleanup-btn');
+const downloadBtn = document.getElementById('download-btn');
 const loadConfigsBtn = document.getElementById('load-configs-btn');
 const cprojectConfigGroup = document.getElementById('cproject-config-group');
 const cprojectConfigSelect = document.getElementById('cproject-config');
@@ -273,6 +274,34 @@ form.addEventListener('submit', async (e) => {
         document.getElementById('result-text').innerText =
             `Successfully extracted ${cleanupData.total_extracted} macros (${cleanupData.evaluable} static values).\n\nSaved to: ${cleanupData.output_file}`;
 
+        if (downloadBtn) {
+            downloadBtn.style.display = 'inline-block';
+            downloadBtn.onclick = async () => {
+                downloadBtn.disabled = true;
+                downloadBtn.textContent = 'Saving...';
+                try {
+                    const res = await fetch('/api/save-as', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: cleanupData.output_file })
+                    });
+                    const data = await res.json();
+
+                    if (data.error) {
+                        alert("Error saving file: " + data.error);
+                    } else if (data.status === "success") {
+                        alert("File saved successfully to:\n" + data.saved_to);
+                    }
+                    // if cancelled, do nothing
+                } catch (e) {
+                    alert("Error saving file: " + e.message);
+                } finally {
+                    downloadBtn.disabled = false;
+                    downloadBtn.textContent = 'Download Results';
+                }
+            };
+        }
+
         lastRepoDir = configData.repo_dir;
 
     } catch (err) {
@@ -291,6 +320,7 @@ resetBtn.addEventListener('click', () => {
     form.style.display = 'block';
     progressContainer.style.display = 'none';
     resultContainer.style.display = 'none';
+    if (downloadBtn) downloadBtn.style.display = 'none';
 });
 
 hardCleanupBtn.addEventListener('click', async () => {
